@@ -19,8 +19,8 @@
 
 namespace
 {
-	constexpr UInt32 kPluginVersion = 4;            // pour xNVSE : entier qui augmente a chaque version publiee
-	constexpr const char* kVersionName = "0.4.0-alpha"; // pour les joueurs : version du paquet
+	constexpr UInt32 kPluginVersion = 5;            // pour xNVSE : entier qui augmente a chaque version publiee
+	constexpr const char* kVersionName = "0.5.0-alpha"; // pour les joueurs : version du paquet
 	constexpr const char* kPluginName = "NVReactiveRagdoll";
 
 	PluginHandle g_handle = 0xFFFFFFFF;
@@ -102,7 +102,7 @@ namespace
 		float standMaxDamage = 150.f;
 		float standMaxSpeed = 2.f;
 		float standTime = 0.8f;
-		float standSupport = 0.9f;
+		float standSupport = 1.0f;
 		float standPushMult = 0.3f;
 		// [Death] mort facon Euphoria
 		bool headshotLimp = true;
@@ -120,6 +120,18 @@ namespace
 		float writheStrength = 0.35f;
 		float writhePull = 0.5f;
 		float writheMaxDamage = 120.f;
+		// [Hollywood] morts de cinema, exagerees
+		bool hollywood = true;
+		float hwHeadshotChance = 1.0f;
+		float hwDramaticChance = 0.35f;
+		float hwMaxDamage = 400.f;
+		float hwStandTime = 2.0f;
+		float hwStumbleTime = 1.5f;
+		float hwSway = 0.3f;
+		float hwPushMult = 1.5f;
+		float hwGrabChance = 0.8f;
+		float hwStumbleChance = 0.5f;
+		float hwWritheChance = 0.7f;
 		// etape 6 : [Fire], [Shock], [Explosions]
 		bool elements = true;
 		float burnTime = 2.5f;
@@ -237,6 +249,17 @@ namespace
 		c.writheStrength = IniFloat("Death", "fWritheStrength", c.writheStrength);
 		c.writhePull = IniFloat("Death", "fWrithePull", c.writhePull);
 		c.writheMaxDamage = IniFloat("Death", "fWritheMaxDamage", c.writheMaxDamage);
+		c.hollywood = IniInt("Hollywood", "bEnabled", 1) != 0;
+		c.hwHeadshotChance = IniFloat("Hollywood", "fHeadshotChance", c.hwHeadshotChance);
+		c.hwDramaticChance = IniFloat("Hollywood", "fDramaticChance", c.hwDramaticChance);
+		c.hwMaxDamage = IniFloat("Hollywood", "fMaxDamage", c.hwMaxDamage);
+		c.hwStandTime = IniFloat("Hollywood", "fStandTime", c.hwStandTime);
+		c.hwStumbleTime = IniFloat("Hollywood", "fStumbleTime", c.hwStumbleTime);
+		c.hwSway = IniFloat("Hollywood", "fSway", c.hwSway);
+		c.hwPushMult = IniFloat("Hollywood", "fPushMult", c.hwPushMult);
+		c.hwGrabChance = IniFloat("Hollywood", "fGrabChance", c.hwGrabChance);
+		c.hwStumbleChance = IniFloat("Hollywood", "fStumbleChance", c.hwStumbleChance);
+		c.hwWritheChance = IniFloat("Hollywood", "fWritheChance", c.hwWritheChance);
 		c.elements = IniInt("General", "bElements", 1) != 0;
 		c.burnTime = IniFloat("Fire", "fBurnTime", c.burnTime);
 		c.burnDeathTime = IniFloat("Fire", "fDeathTime", c.burnDeathTime);
@@ -581,6 +604,8 @@ namespace
 		bool writhe;      // une fois au sol, se tord quelques secondes (mains vers le ventre, jambes repliees)
 		bool limp;        // tir a la tete : s'effondre net, sans muscles
 		float upTime;     // duree debout (stand ou stumble), secondes
+		float standPart;  // dont : debout sur place (oscille) avant de tituber ; = upTime pour stand seul, 0 pour stumble seul
+		bool dramatic;    // Hollywood : reste debout plusieurs secondes en oscillant, titube, puis tombe
 	};
 
 	// direction aleatoire, unitaire
@@ -811,23 +836,38 @@ namespace
 			}
 		}
 
-		// 0. debout un instant (stand) ou titube quelques pas (stumble) : poitrine et bassin portes contre la gravite,
-		//    de moins en moins, le torse tenu droit (penche dans le sens du coup s'il titube) ; les jambes cedent
+		// 0. debout (stand) puis/ou titube (stumble). Le corps est porte comme une marionnette : chaque os, sauf le bas
+		//    des jambes, est soulage de son poids (fStandingSupport), pleinement pendant 70 % du temps puis de moins en
+		//    moins : les jambes cedent a la fin. Le torse est tenu droit : sur place il oscille (Hollywood), en
+		//    titubant il penche dans le sens du coup et le corps est entraine, les pieds trainant derriere.
 		if (age < standT)
 		{
-			float support = g_cfg.standSupport * (1.f - age / standT);
-			V3 lift = GravityOf(b[chest].rb) * (-support * dt);
+			float hold = standT * 0.7f;
+			float support = g_cfg.standSupport * (age < hold ? 1.f : 1.f - (age - hold) / (standT - hold));
+			bool stumbling = m.death.stumble && age >= m.death.standPart;
+			V3 g = GravityOf(b[chest].rb);
+			int ends[16];
+			int ne = humanoid ? 0 : LimbEnds(b, n, chest, ends, 16);
+			for (int k = 0; k < n; ++k)
+			{
+				if (!hk::IsDynamic(At<UInt8>(b[k].rb, hk::kMotionType))) continue;
+				bool lowerLeg = false;
+				if (humanoid) lowerLeg = b[k].name && (strstr(b[k].name, "Calf") || strstr(b[k].name, "Foot"));
+				else for (int j = 0; j < ne; ++j) lowerLeg |= ends[j] == k;
+				if (lowerLeg) continue;
+				AddLinVel(b[k].rb, g * (-support * dt));
+				touched[k] = true;
+			}
+
 			bool hasPelvis = pelvis >= 0 && pelvis != chest && hk::IsDynamic(At<UInt8>(b[pelvis].rb, hk::kMotionType));
-			AddLinVel(b[chest].rb, lift);
-			touched[chest] = true;
 			if (hasPelvis)
 			{
-				AddLinVel(b[pelvis].rb, lift);
-				touched[pelvis] = true;
-
-				// equilibre : l'axe bassin -> poitrine est ramene vers la verticale (sans connaitre les axes des os)
+				// equilibre : l'axe bassin -> poitrine est ramene vers une direction voulue (sans connaitre les axes des os)
+				V3 side = Norm(Cross(m.fallDir, V3{0, 0, 1}));
+				float sway = m.death.dramatic && !stumbling ? g_cfg.hwSway * sinf(age * 4.8f) : 0.f; // oscille sur place
+				float lean = stumbling ? g_cfg.stumbleLean : (m.death.dramatic ? g_cfg.hwSway * 0.5f * sinf(age * 3.1f) : 0.f);
+				V3 want = Norm(V3{0, 0, 1} + m.fallDir * lean + side * sway);
 				V3 spine = Norm(BodyCenter(b[chest].rb) - BodyCenter(b[pelvis].rb));
-				V3 want = Norm(V3{0, 0, 1} + m.fallDir * (m.death.stumble ? g_cfg.stumbleLean : 0.f));
 				V3 axis = Cross(spine, want);
 				float s = Len(axis);
 				if (s > 1e-4f)
@@ -840,21 +880,20 @@ namespace
 					if (ic > 0.f)
 					{
 						AddAngVel(b[chest].rb, dw);
-						AddAngVel(b[pelvis].rb, dw * (-ip / ic) * 0.5f);
+						AddAngVel(b[pelvis].rb, dw * (-ip / ic));
 					}
 				}
 
-				// titube : le corps est entraine dans le sens du coup, les pieds trainent derriere
-				if (m.death.stumble)
+				float follow = dt * 4.f > 1.f ? 1.f : dt * 4.f;
+				for (int part : {chest, pelvis})
 				{
-					for (int part : {chest, pelvis})
-					{
-						V3 v = Load3(b[part].rb, hk::kLinVelocity);
-						V3 wantV = m.fallDir * (g_cfg.stumbleSpeed * support);
-						V3 dv = {wantV.x - v.x, wantV.y - v.y, 0.f};
-						AddLinVel(b[part].rb, dv * (dt * 4.f > 1.f ? 1.f : dt * 4.f));
-					}
+					V3 v = Load3(b[part].rb, hk::kLinVelocity);
+					// titube : entraine dans le sens du coup ; sur place : ne glisse pas
+					V3 wantV = stumbling ? m.fallDir * (g_cfg.stumbleSpeed * support) : V3{0, 0, 0};
+					V3 dv = {wantV.x - v.x, wantV.y - v.y, 0.f};
+					AddLinVel(b[part].rb, dv * follow);
 				}
+				touched[chest] = touched[pelvis] = true;
 			}
 		}
 
@@ -1336,10 +1375,16 @@ namespace
 			float total = dmg * pellets;
 			bool muscles = g_cfg.muscles && g_cfg.musclesOnDeath && !elem; // la facon de mourir passe par les muscles
 			bool moving = Len(MoveVelocity(target)) >= g_cfg.standMaxSpeed;
-			ds.limp = g_cfg.headshotLimp && head && !elem && !explosion;
+			bool hollywood = g_cfg.hollywood && muscles && !explosion;
+			// Hollywood : une balle (ou un coup) qui tue fait une mort de cinema : il reste debout plusieurs secondes en
+			// oscillant, titube, puis tombe. Toujours pour la tete (fHeadshotChance), parfois pour le reste.
+			ds.dramatic = hollywood && total < g_cfg.hwMaxDamage && Chance(head ? g_cfg.hwHeadshotChance : g_cfg.hwDramaticChance);
+			ds.limp = !ds.dramatic && g_cfg.headshotLimp && head && !elem && !explosion;
+			if (hollywood) { deathPush *= g_cfg.hwPushMult; limit = 1.f; }
 			if (muscles && !ds.limp)
 			{
-				if (g_cfg.grab && !explosion && IsHumanoid(b, n) && total < g_cfg.grabMaxDamage * limit && Chance(g_cfg.grabChance))
+				float grabChance = ds.dramatic ? g_cfg.hwGrabChance : g_cfg.grabChance;
+				if (g_cfg.grab && !explosion && IsHumanoid(b, n) && (ds.dramatic || total < g_cfg.grabMaxDamage * limit) && Chance(grabChance))
 				{
 					ds.grab = true;
 					snprintf(ds.wound, sizeof(ds.wound), "%s", bone);
@@ -1348,25 +1393,36 @@ namespace
 					ds.grabHand = strstr(bone, " L ") ? 1 : strstr(bone, " R ") ? 0 : (rand() & 1);
 				}
 				bool upright = !explosion && pellets == 1 && total < g_cfg.standMaxDamage * limit;
-				if (g_cfg.stand && upright && !melee && !moving && Chance(g_cfg.standChance))
+				if (ds.dramatic)
+				{
+					ds.stand = ds.stumble = true;
+					ds.standPart = g_cfg.hwStandTime;
+					ds.upTime = g_cfg.hwStandTime + g_cfg.hwStumbleTime;
+					deathPush *= g_cfg.standPushMult; // il encaisse la balle sans etre jete
+					deathCarry = deathCarry * 0.3f;
+				}
+				else if (g_cfg.stand && upright && !melee && !moving && Chance(g_cfg.standChance))
 				{
 					ds.stand = true;
-					ds.upTime = g_cfg.standTime;
+					ds.upTime = ds.standPart = g_cfg.standTime;
 					deathPush *= g_cfg.standPushMult; // la balle ne le jette pas : il reste debout puis s'effondre
 					deathCarry = {0, 0, 0};
 				}
-				else if (g_cfg.stumble && upright && Chance(g_cfg.stumbleChance))
+				else if (g_cfg.stumble && upright && Chance(hollywood ? g_cfg.hwStumbleChance : g_cfg.stumbleChance))
 				{
 					ds.stumble = true;
 					ds.upTime = g_cfg.stumbleTime;
+					ds.standPart = 0.f;
 					deathPush *= g_cfg.stumblePushMult; // il titube dans le sens du coup au lieu d'etre jete
 				}
-				ds.writhe = g_cfg.writhe && !explosion && total < g_cfg.writheMaxDamage * limit && Chance(g_cfg.writheChance);
+				ds.writhe = g_cfg.writhe && !explosion && (ds.dramatic || total < g_cfg.writheMaxDamage * limit)
+					&& Chance(hollywood ? g_cfg.hwWritheChance : g_cfg.writheChance);
 			}
 		}
 		if (fatal)
 		{
-			reaction = ds.limp ? "meurt, s'effondre net" : ds.stand ? "meurt debout" : ds.stumble ? "meurt en titubant"
+			reaction = ds.limp ? "meurt, s'effondre net" : ds.dramatic ? "mort Hollywood : debout, titube, tombe"
+				: ds.stand ? "meurt debout" : ds.stumble ? "meurt en titubant"
 				: elem == kElem_Fire ? "meurt en feu" : elem == kElem_Shock ? "meurt electrocute"
 				: explosion ? "meurt, projete" : "meurt";
 		}
