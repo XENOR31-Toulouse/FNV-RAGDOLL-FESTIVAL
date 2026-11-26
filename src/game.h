@@ -82,6 +82,7 @@ namespace actor
 {
 	constexpr UInt32 kProcess = 0x68;          // BaseProcess*
 	constexpr UInt32 kRagdollController = 0xAC; // bhkRagdollController*
+	constexpr UInt32 kLifeState = 0x108;        // UInt32 : 0 vivant, 1 mourant, 2 mort, 3 inconscient
 	constexpr UInt32 kVtbl_GetAnimData = 0x1E4; // Actor vtable : AnimData* GetAnimData()
 	constexpr UInt32 kProcess_GetHitData = 0x770; // BaseProcess vtable : ActorHitData* GetHitData()
 	// BaseProcess vtable : PushActorAway(Actor* pushed, float srcX, float srcY, float srcZ, float force)

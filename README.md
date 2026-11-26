@@ -2,7 +2,7 @@
 
 Plugin xNVSE pour Fallout New Vegas : les PNJ **vivants** réagissent physiquement aux coups. Le mod est autonome : il remplace le mod Ragdolls (ne pas les activer ensemble). Conception : [docs/00-conception.md](docs/00-conception.md).
 
-État : version 0.3.0-alpha (créatures, menu de réglages en jeu), étapes 0 à 8 écrites et compilées, **pas encore testées en jeu**. Un PNJ touché tressaille, titube ou tombe selon la force des coups reçus ; à la mort, la poussée part de l'endroit touché et le corps garde son élan. Pendant une chute ou une mort, ses articulations se raidissent et ses mains se tendent pour se rattraper. En mourant, il peut porter la main à sa blessure, ou rester debout un instant avant que ses jambes cèdent. Dans le feu, il bat des bras et des jambes ; électrocuté, il tremble ; projeté par une explosion, ses bras tournent en moulinet pendant le vol.
+État : version 0.4.0-alpha, **pas encore testée en jeu**. Par défaut, les PNJ vivants restent exactement ceux du jeu de base : tout se joue à leur mort, façon Euphoria (poussée au point touché, élan, muscles, main sur la plaie, reste debout ou titube quelques pas, se tord au sol, tir à la tête qui s'effondre net, feu, courant, explosions, créatures). Les réactions des vivants (étapes 2 et 3) existent encore, désactivées (`bLivingReactions`). Étapes 0 à 8 écrites et compilées, **pas encore testées en jeu**. Un PNJ touché tressaille, titube ou tombe selon la force des coups reçus ; à la mort, la poussée part de l'endroit touché et le corps garde son élan. Pendant une chute ou une mort, ses articulations se raidissent et ses mains se tendent pour se rattraper. En mourant, il peut porter la main à sa blessure, ou rester debout un instant avant que ses jambes cèdent. Dans le feu, il bat des bras et des jambes ; électrocuté, il tremble ; projeté par une explosion, ses bras tournent en moulinet pendant le vol.
 
 ## Prérequis
 
@@ -46,7 +46,7 @@ Ce qu'il faut regarder dans le journal : la colonne « anime(keyframed) » ou «
 
 ## Réglages
 
-**En jeu** : menu pause, *Mod Configuration*, page **NV Reactive Ragdoll** (7 pages, 57 options). Il faut [The Mod Configuration Menu](https://www.nexusmods.com/newvegas/mods/42507) et [MCM Extender](https://www.nexusmods.com/newvegas/mods/93642) ; sans eux, le mod marche quand même, réglable par le fichier. Les changements s'appliquent à la fermeture du menu pause.
+**En jeu** : menu pause, *Mod Configuration*, page **NV Reactive Ragdoll** (7 pages, 64 options). Il faut [The Mod Configuration Menu](https://www.nexusmods.com/newvegas/mods/42507) et [MCM Extender](https://www.nexusmods.com/newvegas/mods/93642) ; sans eux, le mod marche quand même, réglable par le fichier. Les changements s'appliquent à la fermeture du menu pause.
 
 **Fichier** : `Data\Config\NVReactiveRagdoll.ini` (c'est là que le menu écrit), relu à chaque chargement de partie et dès qu'il change. Un .ini à l'ancienne place (`NVSE\Plugins\`, version 0.1.0) est encore lu s'il n'y en a pas dans `Config\`. La section `[RagdollAnim]` écrit les réglages natifs du jeu qui pilotent le mélange animation / physique ; le journal affiche leurs valeurs avant et après.
 

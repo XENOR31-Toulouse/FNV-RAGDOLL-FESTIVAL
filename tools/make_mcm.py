@@ -19,13 +19,13 @@ OUT = ROOT / "data" / "MCM" / "NVReactiveRagdoll.json"
 PAGES = [
     ("General", [
         ("General", "bEnabled", "Mod actif", "Active ou coupe toutes les reactions.", "bool"),
+        ("General", "bLivingReactions", "Reactions des vivants",
+         "Desactive : les PNJ vivants restent ceux du jeu de base, tout se joue a la mort. Active : ils tressaillent, titubent, tombent.", "bool"),
         ("General", "bElements", "Feu, electricite, explosions", "Reactions propres au feu, au courant et aux explosions.", "bool"),
         ("General", "bReactPlayer", "Le joueur reagit aussi", "Applique les poussees au joueur (jamais de chute ni de titubement).", "bool"),
         ("General", "bVerbose", "Journal detaille", "Une ligne par coup dans NVReactiveRagdoll.log (utile pour regler).", "bool"),
         ("Compatibility", "bYieldToExplosionReactions", "Laisser la place a Explosion Reactions",
          "Si Explosion Reactions est installe, il gere les vivants touches par une explosion.", "bool"),
-        ("RagdollAnim", "bRagdollFeedback", "Ragdoll Feedback du jeu",
-         "Systeme du jeu qui rend le corps des vivants physique quand ils sont touches. Necessaire aux reactions des vivants.", "bool"),
     ]),
     ("Coups", [
         ("Hits", "fBasePush", "Poussee de base", "Poussee de chaque coup, avant les degats.", "int", 0, 100, 1),
@@ -37,7 +37,7 @@ PAGES = [
         ("Hits", "fNeighbourShare", "Part des os voisins", "Part de la poussee donnee aux os voisins de l'os touche.", "float", 0, 1, 0.05),
         ("Hits", "fUp", "Part verticale", "0 = poussee a plat ; plus haut = vers le haut.", "float", 0, 1, 0.05),
     ]),
-    ("Titube et chute", [
+    ("Vivants : titube et chute", [
         ("Reactions", "bStagger", "Tituber", "Au-dessus du seuil, le PNJ joue l'animation de titubement.", "bool"),
         ("Reactions", "bKnockdown", "Tomber", "Au-dessus du seuil, le PNJ est renverse puis se releve.", "bool"),
         ("Reactions", "fStaggerAt", "Seuil de titubement", "Charge de coups a partir de laquelle il titube (9mm ~40).", "int", 0, 400, 5),
@@ -58,6 +58,13 @@ PAGES = [
         ("Death", "bStanding", "Reste debout un instant", "Tue d'une seule balle, un PNJ immobile reste debout puis s'effondre.", "bool"),
         ("Death", "fStandingChance", "Chance : reste debout", "0 = jamais, 1 = toujours.", "float", 0, 1, 0.05),
         ("Death", "fStandingTime", "Duree debout", "En secondes.", "float", 0, 3, 0.1),
+        ("Death", "bHeadshotLimp", "Tir a la tete : s'effondre net", "Pas de gestes apres un tir mortel a la tete.", "bool"),
+        ("Death", "bStumble", "Titube en mourant", "Il fait quelques pas dans le sens du coup avant que ses jambes cedent.", "bool"),
+        ("Death", "fStumbleChance", "Chance : titube", "0 = jamais, 1 = toujours.", "float", 0, 1, 0.05),
+        ("Death", "fStumbleTime", "Duree du titubement", "En secondes.", "float", 0, 3, 0.1),
+        ("Death", "bWrithe", "Se tord au sol", "Une fois tombe, il bouge encore un peu, de plus en plus faiblement.", "bool"),
+        ("Death", "fWritheChance", "Chance : se tord au sol", "0 = jamais, 1 = toujours.", "float", 0, 1, 0.05),
+        ("Death", "fWritheTime", "Duree au sol", "En secondes.", "float", 0, 10, 0.5),
     ]),
     ("Muscles", [
         ("Muscles", "bEnabled", "Muscles actifs", "Pendant une chute ou une mort, le corps se raidit et les mains se tendent.", "bool"),

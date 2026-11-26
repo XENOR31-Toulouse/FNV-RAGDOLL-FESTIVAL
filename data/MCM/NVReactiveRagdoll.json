@@ -31,6 +31,18 @@
                     "type": 5
                 },
                 "2": {
+                    "title": "Reactions des vivants",
+                    "enable": 1,
+                    "mouse": "Desactive : les PNJ vivants restent ceux du jeu de base, tout se joue a la mort. Active : ils tressaillent, titubent, tombent.",
+                    "vars": [
+                        {
+                            "configINI": "General:bLivingReactions",
+                            "default": 0
+                        }
+                    ],
+                    "type": 5
+                },
+                "3": {
                     "title": "Feu, electricite, explosions",
                     "enable": 1,
                     "mouse": "Reactions propres au feu, au courant et aux explosions.",
@@ -42,7 +54,7 @@
                     ],
                     "type": 5
                 },
-                "3": {
+                "4": {
                     "title": "Le joueur reagit aussi",
                     "enable": 1,
                     "mouse": "Applique les poussees au joueur (jamais de chute ni de titubement).",
@@ -54,7 +66,7 @@
                     ],
                     "type": 5
                 },
-                "4": {
+                "5": {
                     "title": "Journal detaille",
                     "enable": 1,
                     "mouse": "Une ligne par coup dans NVReactiveRagdoll.log (utile pour regler).",
@@ -66,25 +78,13 @@
                     ],
                     "type": 5
                 },
-                "5": {
+                "6": {
                     "title": "Laisser la place a Explosion Reactions",
                     "enable": 1,
                     "mouse": "Si Explosion Reactions est installe, il gere les vivants touches par une explosion.",
                     "vars": [
                         {
                             "configINI": "Compatibility:bYieldToExplosionReactions",
-                            "default": 1
-                        }
-                    ],
-                    "type": 5
-                },
-                "6": {
-                    "title": "Ragdoll Feedback du jeu",
-                    "enable": 1,
-                    "mouse": "Systeme du jeu qui rend le corps des vivants physique quand ils sont touches. Necessaire aux reactions des vivants.",
-                    "vars": [
-                        {
-                            "configINI": "RagdollAnim:bRagdollFeedback",
                             "default": 1
                         }
                     ],
@@ -246,8 +246,8 @@
             }
         },
         "3": {
-            "listTitle": "Titube et chute",
-            "pageTitle": "Titube et chute",
+            "listTitle": "Vivants : titube et chute",
+            "pageTitle": "Vivants : titube et chute",
             "columns": 1,
             "enable": 1,
             "options": {
@@ -551,6 +551,114 @@
                         "valueIncrement": 0.1,
                         "valueMin": 0,
                         "valueMax": 3
+                    }
+                },
+                "10": {
+                    "title": "Tir a la tete : s'effondre net",
+                    "enable": 1,
+                    "mouse": "Pas de gestes apres un tir mortel a la tete.",
+                    "vars": [
+                        {
+                            "configINI": "Death:bHeadshotLimp",
+                            "default": 1
+                        }
+                    ],
+                    "type": 5
+                },
+                "11": {
+                    "title": "Titube en mourant",
+                    "enable": 1,
+                    "mouse": "Il fait quelques pas dans le sens du coup avant que ses jambes cedent.",
+                    "vars": [
+                        {
+                            "configINI": "Death:bStumble",
+                            "default": 1
+                        }
+                    ],
+                    "type": 5
+                },
+                "12": {
+                    "title": "Chance : titube",
+                    "enable": 1,
+                    "mouse": "0 = jamais, 1 = toujours.",
+                    "vars": [
+                        {
+                            "configINI": "Death:fStumbleChance",
+                            "default": 0.35
+                        }
+                    ],
+                    "type": 2.5,
+                    "scale": {
+                        "valueDecimal": 2,
+                        "valueIncrement": 0.05,
+                        "valueMin": 0,
+                        "valueMax": 1
+                    }
+                },
+                "13": {
+                    "title": "Duree du titubement",
+                    "enable": 1,
+                    "mouse": "En secondes.",
+                    "vars": [
+                        {
+                            "configINI": "Death:fStumbleTime",
+                            "default": 1.2
+                        }
+                    ],
+                    "type": 2.5,
+                    "scale": {
+                        "valueDecimal": 1,
+                        "valueIncrement": 0.1,
+                        "valueMin": 0,
+                        "valueMax": 3
+                    }
+                },
+                "14": {
+                    "title": "Se tord au sol",
+                    "enable": 1,
+                    "mouse": "Une fois tombe, il bouge encore un peu, de plus en plus faiblement.",
+                    "vars": [
+                        {
+                            "configINI": "Death:bWrithe",
+                            "default": 1
+                        }
+                    ],
+                    "type": 5
+                },
+                "15": {
+                    "title": "Chance : se tord au sol",
+                    "enable": 1,
+                    "mouse": "0 = jamais, 1 = toujours.",
+                    "vars": [
+                        {
+                            "configINI": "Death:fWritheChance",
+                            "default": 0.4
+                        }
+                    ],
+                    "type": 2.5,
+                    "scale": {
+                        "valueDecimal": 2,
+                        "valueIncrement": 0.05,
+                        "valueMin": 0,
+                        "valueMax": 1
+                    }
+                },
+                "16": {
+                    "title": "Duree au sol",
+                    "enable": 1,
+                    "mouse": "En secondes.",
+                    "vars": [
+                        {
+                            "configINI": "Death:fWritheTime",
+                            "default": 3.0
+                        }
+                    ],
+                    "type": 2.5,
+                    "scale": {
+                        "valueDecimal": 1,
+                        "valueIncrement": 0.5,
+                        "valueMin": 0,
+                        "valueMax": 10
                     }
                 }
             }

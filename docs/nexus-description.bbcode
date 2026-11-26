@@ -1,20 +1,17 @@
 [center][size=6][b]NV Reactive Ragdoll[/b][/size]
 [size=3]Physics-driven hit reactions for living NPCs - an xNVSE plugin[/size][/center]
 
-[color=#ff9900][b]ALPHA 0.3.0 - public test build. Please send your NVReactiveRagdoll.log with any report.[/b][/color]
+[color=#ff9900][b]ALPHA 0.4.0 - public test build. Please send your NVReactiveRagdoll.log with any report.[/b][/color]
 
 [size=4][b]What it does[/b][/size]
-NPCs react to hits with their own Havok ragdoll instead of only canned animations. Inspired by recent physics mods for Skyrim (Delirium, Precision, PLANCK) and by MadAce's Ragdolls for New Vegas, which it replaces.
+Euphoria-style deaths for New Vegas. Living NPCs fight exactly like in the vanilla game; when they die, their Havok ragdoll is driven by "muscles" instead of collapsing like a sack. Inspired by recent physics mods for Skyrim (Delirium, Precision, PLANCK) and by MadAce's Ragdolls for New Vegas, which it replaces.
 
 [list]
-[*][b]Flinch[/b] - every hit pushes the bone that was struck, at the impact point, plus its neighbours.
-[*][b]Stagger and knockdown[/b] - hits build up a per-NPC "charge" that fades over time. A pistol shot makes them flinch, a burst or a rifle round makes them stagger, a point-blank shotgun blast or a power attack knocks them down. The game gets them back up.
-[*][b]Momentum[/b] - a running NPC keeps its speed when it falls or dies.
-[*][b]Muscles[/b] - while falling, joints tense up, the neck stays stiff and the hands reach out to break the fall.
-[*][b]Deaths[/b] - the killing shot pushes from where it hit. NPCs may clutch the wound, or stay on their feet for a moment before their legs give way.
-[*][b]Fire[/b] - burning NPCs beat at the flames and kick. [b]Electricity[/b] - shocked NPCs shake. [b]Explosions[/b] - thrown NPCs windmill their arms and pedal in the air, then reach out to land.
-[*]Fire and electricity are detected from the weapon's damage type and projectile: weapons from other mods work without patches.
+[*][b]Deaths[/b] - the killing shot pushes from the wound, running NPCs keep their momentum, joints tense up and hands reach out to break the fall. They may clutch the wound, stay on their feet for a moment, or stumble a few steps before their legs give way, then writhe on the ground for a few seconds. Headshots drop them instantly.
+[*][b]Fire[/b] - burning NPCs die beating at the flames and kicking. [b]Electricity[/b] - they die shaking. [b]Explosions[/b] - thrown bodies windmill their arms and pedal in the air, then reach out to land. Detected from the weapon's damage type and projectile: weapons from other mods work without patches.
+[*][b]Creatures[/b] - same deaths on their own skeletons.
 [/list]
+[b]Optional living reactions[/b] (off by default, one switch in the menu): flinch at the impact point, stagger and knockdown from a per-NPC hit "charge", burning and shocked NPCs flailing.
 
 [size=4][b]Requirements[/b][/size]
 [list]
@@ -36,7 +33,7 @@ Install with your mod manager. Disable [b]Ragdolls[/b] (this mod replaces it). N
 [/list]
 
 [size=4][b]Settings[/b][/size]
-In game: pause menu, Mod Configuration, [b]NV Reactive Ragdoll[/b] (7 pages, 57 options; needs [url=https://www.nexusmods.com/newvegas/mods/42507]MCM[/url] and [url=https://www.nexusmods.com/newvegas/mods/93642]MCM Extender[/url], no plugin file). Changes apply when you close the pause menu.
+In game: pause menu, Mod Configuration, [b]NV Reactive Ragdoll[/b] (7 pages, 64 options; needs [url=https://www.nexusmods.com/newvegas/mods/42507]MCM[/url] and [url=https://www.nexusmods.com/newvegas/mods/93642]MCM Extender[/url], no plugin file). Changes apply when you close the pause menu.
 Or edit Data\Config\NVReactiveRagdoll.ini, re-read as soon as it changes. Every reaction can be tuned or turned off. Debug keys: F8 lists the physics bodies of the NPC under the crosshair, F7 pushes it.
 
 [size=4][b]Source and credits[/b][/size]
