@@ -228,3 +228,16 @@ namespace ini
 	constexpr UInt32 kValue = 0x04;
 	constexpr UInt32 kName = 0x08;
 }
+
+// Reglages de jeu (GMST), meme structure que ci-dessus. Adresses : JIP settings_enum.h
+namespace gmst
+{
+	constexpr UInt32 fGameplayImpulseMultBiped = 0x11D0574;
+}
+
+// Gravite : hkpWorldObject +0x08 = hkpWorld*, hkpWorld +0x10 = hkVector4 gravite (unites Havok/s2)
+namespace hkworld
+{
+	constexpr UInt32 kWorldOfObject = 0x08;
+	constexpr UInt32 kGravity = 0x10;
+}

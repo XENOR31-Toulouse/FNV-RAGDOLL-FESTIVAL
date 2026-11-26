@@ -87,6 +87,18 @@ namespace
 		float armPull = 25.f;
 		float armDamping = 8.f;
 		float armMaxDv = 4.f;
+		// [Death] etape 5 : facon de mourir
+		bool grab = true;
+		float grabChance = 0.6f;
+		float grabMaxDamage = 150.f;
+		float grabPull = 1.5f;
+		bool stand = true;
+		float standChance = 0.5f;
+		float standMaxDamage = 150.f;
+		float standMaxSpeed = 2.f;
+		float standTime = 0.8f;
+		float standSupport = 0.9f;
+		float standPushMult = 0.3f;
 		// [RagdollAnim] reglages natifs du jeu
 		bool forceFeedback = true;
 	} g_cfg;
@@ -139,6 +151,17 @@ namespace
 		c.armPull = IniFloat("Muscles", "fArmPull", c.armPull);
 		c.armDamping = IniFloat("Muscles", "fArmDamping", c.armDamping);
 		c.armMaxDv = IniFloat("Muscles", "fArmMaxSpeed", c.armMaxDv);
+		c.grab = IniInt("Death", "bGrabWound", 1) != 0;
+		c.grabChance = IniFloat("Death", "fGrabChance", c.grabChance);
+		c.grabMaxDamage = IniFloat("Death", "fGrabMaxDamage", c.grabMaxDamage);
+		c.grabPull = IniFloat("Death", "fGrabPull", c.grabPull);
+		c.stand = IniInt("Death", "bStanding", 1) != 0;
+		c.standChance = IniFloat("Death", "fStandingChance", c.standChance);
+		c.standMaxDamage = IniFloat("Death", "fStandingMaxDamage", c.standMaxDamage);
+		c.standMaxSpeed = IniFloat("Death", "fStandingMaxSpeed", c.standMaxSpeed);
+		c.standTime = IniFloat("Death", "fStandingTime", c.standTime);
+		c.standSupport = IniFloat("Death", "fStandingSupport", c.standSupport);
+		c.standPushMult = IniFloat("Death", "fStandingPushMult", c.standPushMult);
 		c.forceFeedback = IniInt("RagdollAnim", "bRagdollFeedback", 1) != 0;
 		g_cfg = c;
 		Log("Reglages lus : %s (%s)", g_iniPath,
@@ -147,25 +170,28 @@ namespace
 			c.enabled, c.basePush, c.pushPerDamage, c.maxPush, c.neighbourShare, c.testPush);
 	}
 
-	// Reglages natifs du jeu ([RagdollAnim] de Fallout.ini) : ecrits seulement s'ils sont presents dans notre .ini.
-	struct GameSetting { const char* key; UInt32 addr; bool isFloat; };
+	// Reglages natifs du jeu (Fallout.ini et GMST, meme structure en memoire) : ecrits seulement s'ils sont presents
+	// dans notre .ini, dans la section indiquee.
+	struct GameSetting { const char* section; const char* key; UInt32 addr; bool isFloat; };
 	const GameSetting kGameSettings[] = {
-		{"bRagdollFeedback", ini::bRagdollFeedback, false},
-		{"bRagdollAnim", ini::bRagdollAnim, false},
-		{"bPoseMatching", ini::bPoseMatching, false},
-		{"fHierarchyGain", ini::fHierarchyGain, true},
-		{"fVelocityDamping", ini::fVelocityDamping, true},
-		{"fAccelerationGain", ini::fAccelerationGain, true},
-		{"fVelocityGain", ini::fVelocityGain, true},
-		{"fPositionGain", ini::fPositionGain, true},
-		{"fPositionMaxLinearVelocity", ini::fPositionMaxLinearVelocity, true},
-		{"fPositionMaxAngularVelocity", ini::fPositionMaxAngularVelocity, true},
-		{"fSnapGain", ini::fSnapGain, true},
-		{"fSnapMaxLinearVelocity", ini::fSnapMaxLinearVelocity, true},
-		{"fSnapMaxAngularVelocity", ini::fSnapMaxAngularVelocity, true},
-		{"fSnapMaxLinearDistance", ini::fSnapMaxLinearDistance, true},
-		{"fSnapMaxAngularDistance", ini::fSnapMaxAngularDistance, true},
-		{"uiFeedbackTimeout", ini::uiFeedbackTimeout, false},
+		{"RagdollAnim", "bRagdollFeedback", ini::bRagdollFeedback, false},
+		{"RagdollAnim", "bRagdollAnim", ini::bRagdollAnim, false},
+		{"RagdollAnim", "bPoseMatching", ini::bPoseMatching, false},
+		{"RagdollAnim", "fHierarchyGain", ini::fHierarchyGain, true},
+		{"RagdollAnim", "fVelocityDamping", ini::fVelocityDamping, true},
+		{"RagdollAnim", "fAccelerationGain", ini::fAccelerationGain, true},
+		{"RagdollAnim", "fVelocityGain", ini::fVelocityGain, true},
+		{"RagdollAnim", "fPositionGain", ini::fPositionGain, true},
+		{"RagdollAnim", "fPositionMaxLinearVelocity", ini::fPositionMaxLinearVelocity, true},
+		{"RagdollAnim", "fPositionMaxAngularVelocity", ini::fPositionMaxAngularVelocity, true},
+		{"RagdollAnim", "fSnapGain", ini::fSnapGain, true},
+		{"RagdollAnim", "fSnapMaxLinearVelocity", ini::fSnapMaxLinearVelocity, true},
+		{"RagdollAnim", "fSnapMaxAngularVelocity", ini::fSnapMaxAngularVelocity, true},
+		{"RagdollAnim", "fSnapMaxLinearDistance", ini::fSnapMaxLinearDistance, true},
+		{"RagdollAnim", "fSnapMaxAngularDistance", ini::fSnapMaxAngularDistance, true},
+		{"RagdollAnim", "uiFeedbackTimeout", ini::uiFeedbackTimeout, false},
+		// poussee que le jeu donne lui-meme aux corps (dont la « kill impulse » des armes), au centre du corps
+		{"Death", "fVanillaImpulseMult", gmst::fGameplayImpulseMultBiped, true},
 	};
 
 	void ApplyGameSettings()
@@ -175,7 +201,7 @@ namespace
 			void* setting = (void*)s.addr;
 			const char* name = At<const char*>(setting, ini::kName);
 			char buf[64];
-			GetPrivateProfileStringA("RagdollAnim", s.key, "", buf, sizeof(buf), g_iniPath);
+			GetPrivateProfileStringA(s.section, s.key, "", buf, sizeof(buf), g_iniPath);
 			if (s.isFloat)
 			{
 				float before = At<float>(setting, ini::kValue);
@@ -367,6 +393,39 @@ namespace
 	// 2. Reflexe de protection : chaque main est tiree vers un point devant et sous la poitrine, dans le sens de la
 	//    chute (pour se rattraper), avec la force opposee sur la poitrine : le corps entier n'est pas propulse.
 	// Les axes locaux des os de New Vegas ne sont pas documentes : tout est exprime dans l'espace du monde.
+	// Etape 5 : facon de mourir, choisie au coup fatal (inspire du mod Ragdolls)
+	struct DeathStyle
+	{
+		bool grab;        // une main va sur la plaie
+		int grabHand;     // 0 gauche, 1 droite
+		char wound[32];   // os touche
+		V3 woundLocal;    // point de la plaie dans le repere de l'os
+		bool stand;       // reste debout un instant, puis s'effondre
+	};
+
+	// Repere d'un os : 3 colonnes de rotation (hkMatrix3x4)
+	V3 ToWorld(UInt8* rb, V3 l)
+	{
+		return Load3(rb, hk::kRotation) * l.x + Load3(rb, hk::kRotation + 0x10) * l.y + Load3(rb, hk::kRotation + 0x20) * l.z;
+	}
+	V3 ToLocal(UInt8* rb, V3 w)
+	{
+		return {Dot(Load3(rb, hk::kRotation), w), Dot(Load3(rb, hk::kRotation + 0x10), w), Dot(Load3(rb, hk::kRotation + 0x20), w)};
+	}
+
+	// Gravite du monde physique ou se trouve le corps (unites Havok/s2)
+	V3 GravityOf(UInt8* rb)
+	{
+		void* world = At<void*>(rb, hkworld::kWorldOfObject);
+		V3 g = world ? Load3(world, hkworld::kGravity) : V3{0, 0, -9.8f};
+		if (Len(g) < 0.1f || Len(g) > 1000.f) g = {0, 0, -9.8f};
+		static bool logged = false;
+		if (!logged) { logged = true; Log("Gravite Havok : %.2f %.2f %.2f", g.x, g.y, g.z); }
+		return g;
+	}
+
+	bool Chance(float p) { return p > 0.f && (float)rand() / RAND_MAX < p; }
+
 	struct MuscleTask
 	{
 		UInt32 refID;    // 0 = case libre
@@ -377,6 +436,7 @@ namespace
 		bool dying;      // a la mort, les muscles lachent progressivement
 		V3 fallDir;      // horizontal, unitaire
 		float reach;     // longueur du bras (epaule -> main), unites Havok, mesuree a la premiere image
+		DeathStyle death;
 	};
 	constexpr int kMaxMuscles = 8;
 	SInt32 KnockedState(void* actorRef); // plus bas
@@ -384,7 +444,7 @@ namespace
 
 	void ClearMuscles() { memset(g_muscles, 0, sizeof(g_muscles)); }
 
-	void StartMuscles(void* target, bool dying, V3 fallDir)
+	void StartMuscles(void* target, bool dying, V3 fallDir, const DeathStyle* death)
 	{
 		if (!g_cfg.muscles || (dying ? !g_cfg.musclesOnDeath : !g_cfg.musclesOnKnockdown)) return;
 		MuscleTask* slot = nullptr;
@@ -395,9 +455,12 @@ namespace
 		}
 		if (!slot) return; // trop de PNJ au sol en meme temps : les suivants tombent sans muscles
 		fallDir.z = 0.f;
-		*slot = {RefID(target), target, GetTickCount(), GetTickCount(),
-			dying ? g_cfg.muscleDeathTime : g_cfg.muscleTime, dying, Norm(fallDir), 0.f};
-		if (g_cfg.verbose) Log("Muscles de %08X : debut (%s)", slot->refID, dying ? "mort" : "chute");
+		DeathStyle ds = death ? *death : DeathStyle{};
+		float duration = dying ? g_cfg.muscleDeathTime + (ds.stand ? g_cfg.standTime : 0.f) : g_cfg.muscleTime;
+		*slot = {RefID(target), target, GetTickCount(), GetTickCount(), duration, dying, Norm(fallDir), 0.f, ds};
+		if (g_cfg.verbose)
+			Log("Muscles de %08X : debut (%s%s%s%s)", slot->refID, dying ? "mort" : "chute",
+				ds.stand ? ", reste debout" : "", ds.grab ? ", main sur la plaie : " : "", ds.grab ? ds.wound : "");
 	}
 
 	// inverse d'inertie moyenne (scalaire) : suffisant pour repartir un effort entre deux os
@@ -440,10 +503,28 @@ namespace
 		int chest = FindBody(b, n, "Bip01 Spine2");
 		if (chest < 0 || !hk::IsDynamic(At<UInt8>(b[chest].rb, hk::kMotionType))) return false; // plus de ragdoll
 
-		// force : pleine puis decroissante (a la mort elle decroit des le debut : les muscles lachent)
+		// force : pleine puis decroissante (a la mort elle decroit des le debut : les muscles lachent,
+		// apres le temps passe debout s'il y en a un)
 		float t = age / m.duration;
-		float strength = m.dying ? (1.f - t) : (t < 0.6f ? 1.f : (1.f - t) / 0.4f);
+		float standT = (m.dying && m.death.stand) ? g_cfg.standTime : 0.f;
+		float strength = m.dying ? (age < standT ? 1.f : 1.f - (age - standT) / (m.duration - standT))
+			: (t < 0.6f ? 1.f : (1.f - t) / 0.4f);
 		bool touched[kMaxBodies] = {};
+
+		// 0. reste debout un instant : poitrine et bassin portes contre la gravite, de moins en moins, les jambes cedent
+		if (age < standT)
+		{
+			float support = g_cfg.standSupport * (1.f - age / standT);
+			V3 lift = GravityOf(b[chest].rb) * (-support * dt);
+			int pelvis = FindBody(b, n, "Bip01 Pelvis");
+			AddLinVel(b[chest].rb, lift);
+			touched[chest] = true;
+			if (pelvis >= 0 && hk::IsDynamic(At<UInt8>(b[pelvis].rb, hk::kMotionType)))
+			{
+				AddLinVel(b[pelvis].rb, lift);
+				touched[pelvis] = true;
+			}
+		}
 
 		// 1. tension des articulations
 		for (int k = 0; k < n; ++k)
@@ -470,17 +551,29 @@ namespace
 		// 2. les mains se tendent pour amortir la chute
 		const char* sides[2][2] = {{"Bip01 L Hand", "Bip01 L UpperArm"}, {"Bip01 R Hand", "Bip01 R UpperArm"}};
 		V3 chestPos = BodyCenter(b[chest].rb);
-		for (auto& s : sides)
+		int wound = m.death.grab ? FindBody(b, n, m.death.wound) : -1;
+		for (int s = 0; s < 2; ++s)
 		{
-			int hand = FindBody(b, n, s[0]);
-			int shoulder = FindBody(b, n, s[1]);
+			int hand = FindBody(b, n, sides[s][0]);
+			int shoulder = FindBody(b, n, sides[s][1]);
 			if (hand < 0 || shoulder < 0 || !hk::IsDynamic(At<UInt8>(b[hand].rb, hk::kMotionType))) continue;
 			V3 sh = BodyCenter(b[shoulder].rb);
 			if (m.reach <= 0.f) m.reach = Len(BodyCenter(b[hand].rb) - sh) * 1.6f; // centre du bras -> longueur
-			V3 side = sh - chestPos;
-			side.z = 0.f;
-			V3 target = sh + m.fallDir * (m.reach * 0.6f) + side * 0.3f + V3{0, 0, -m.reach * 0.5f};
-			PullHand(b, hand, chest, target, strength, dt);
+			V3 target;
+			float pull = strength;
+			if (wound >= 0 && s == m.death.grabHand)
+			{
+				// 3. la main va sur la plaie, qui suit l'os touche dans sa chute
+				target = BodyCenter(b[wound].rb) + ToWorld(b[wound].rb, m.death.woundLocal);
+				pull *= g_cfg.grabPull;
+			}
+			else
+			{
+				V3 side = sh - chestPos;
+				side.z = 0.f;
+				target = sh + m.fallDir * (m.reach * 0.6f) + side * 0.3f + V3{0, 0, -m.reach * 0.5f};
+			}
+			PullHand(b, hand, chest, target, pull, dt);
 			touched[hand] = touched[chest] = true;
 		}
 
@@ -518,6 +611,7 @@ namespace
 		V3 carry;          // vitesse de course a ajouter a tous les corps (unites Havok/s)
 		const char* what;  // "Mort" ou "Chute", pour le journal
 		DWORD start;       // GetTickCount
+		DeathStyle death;  // facon de mourir (Mort seulement)
 	};
 	constexpr int kMaxPending = 16;
 	PendingPush g_pending[kMaxPending] = {};
@@ -541,7 +635,7 @@ namespace
 		return done;
 	}
 
-	void QueuePush(void* target, const char* what, const char* bone, V3 J, V3 offset, V3 carry)
+	void QueuePush(void* target, const char* what, const char* bone, V3 J, V3 offset, V3 carry, const DeathStyle* death)
 	{
 		PendingPush* slot = nullptr;
 		for (PendingPush& p : g_pending)
@@ -558,6 +652,7 @@ namespace
 		slot->carry = carry;
 		slot->what = what;
 		slot->start = GetTickCount();
+		slot->death = death ? *death : DeathStyle{};
 	}
 
 	void ProcessPending()
@@ -575,7 +670,7 @@ namespace
 			{
 				int carried = AddVelocityToAll(b, n, p.carry);
 				int pushed = PushBodyAndNeighbours(b, n, i, p.J, BodyCenter(b[i].rb) + p.offset);
-				StartMuscles(p.ref, !strcmp(p.what, "Mort"), p.carry + Norm(p.J));
+				StartMuscles(p.ref, !strcmp(p.what, "Mort"), p.carry + Norm(p.J), &p.death);
 				if (g_cfg.verbose)
 					Log("%s de %08X : poussee %.1f sur %s appliquee apres %lu ms, %d corps pousses, elan %.2f sur %d corps",
 						p.what, p.refID, Len(p.J), p.bone, waited, pushed, Len(p.carry), carried);
@@ -739,8 +834,34 @@ namespace
 		const char* reaction = "tressaille";
 		V3 carry = MoveVelocity(target) * g_cfg.carryVelocity;
 
+		// etape 5 : facon de mourir
+		DeathStyle ds = {};
 		if (fatal)
+		{
 			reaction = "meurt";
+			const char* bone = b[i].name ? b[i].name : "";
+			bool head = strstr(bone, "Head") || strstr(bone, "Neck");
+			float limit = head ? 0.5f : 1.f; // un tir a la tete tue net plus facilement
+			float total = dmg * pellets;
+			bool muscles = g_cfg.muscles && g_cfg.musclesOnDeath; // la facon de mourir passe par les muscles
+			if (muscles && g_cfg.grab && !explosion && total < g_cfg.grabMaxDamage * limit && Chance(g_cfg.grabChance))
+			{
+				ds.grab = true;
+				snprintf(ds.wound, sizeof(ds.wound), "%s", bone);
+				ds.woundLocal = ToLocal(b[i].rb, p - BodyCenter(b[i].rb));
+				// la main du cote oppose a un bras touche ; sinon au hasard
+				ds.grabHand = strstr(bone, " L ") ? 1 : strstr(bone, " R ") ? 0 : (rand() & 1);
+			}
+			if (muscles && g_cfg.stand && !melee && !explosion && pellets == 1 && Len(MoveVelocity(target)) < g_cfg.standMaxSpeed
+				&& total < g_cfg.standMaxDamage * limit && Chance(g_cfg.standChance))
+			{
+				ds.stand = true;
+				push *= g_cfg.standPushMult; // la balle ne le jette pas : il reste debout puis s'effondre
+				carry = {0, 0, 0};
+			}
+			if (ds.stand) reaction = ds.grab ? "meurt debout, main sur la plaie" : "meurt debout";
+			else if (ds.grab) reaction = "meurt, main sur la plaie";
+		}
 		else if (standing && g_cfg.knockdown && charge >= g_cfg.knockAt)
 		{
 			float scale = charge / g_cfg.knockAt;
@@ -749,7 +870,7 @@ namespace
 			V3 srcGame = srcRef ? Load3(srcRef, refr::kPos) : (p - dir) * 7.f;
 			KnockDown(target, srcGame, g_cfg.knockForce * scale);
 			// le ragdoll commence une image plus tard : poussee au point touche et elan, des qu'il est dynamique
-			QueuePush(target, "Chute", b[i].name, dir * (push * g_cfg.knockLocalShare), p - BodyCenter(b[i].rb), carry);
+			QueuePush(target, "Chute", b[i].name, dir * (push * g_cfg.knockLocalShare), p - BodyCenter(b[i].rb), carry, nullptr);
 			st.charge = 0.f;
 			reaction = "tombe";
 		}
@@ -761,12 +882,12 @@ namespace
 
 		int pushed = PushBodyAndNeighbours(b, n, i, dir * push, p);
 		bool deferred = !pushed && fatal && g_cfg.deferFatal;
-		if (deferred) QueuePush(target, "Mort", b[i].name, dir * push, p - BodyCenter(b[i].rb), carry);
+		if (deferred) QueuePush(target, "Mort", b[i].name, dir * push, p - BodyCenter(b[i].rb), carry, &ds);
 		else if (fatal && pushed)
 		{
 			// deja en ragdoll au moment du coup fatal : elan et muscles tout de suite
 			AddVelocityToAll(b, n, carry);
-			StartMuscles(target, true, carry + dir);
+			StartMuscles(target, true, carry + dir, &ds);
 		}
 		if (g_cfg.verbose)
 			Log("Coup sur %08X par %08X : %s%s, degats %.1f x%d, drapeaux %X, os %s (%s), force %.1f, charge %.1f -> %s, "
@@ -938,6 +1059,7 @@ extern "C"
 		snprintf(g_iniPath, sizeof(g_iniPath), "%sData\\NVSE\\Plugins\\NVReactiveRagdoll.ini", g_gameDir);
 
 		Log("NV Reactive Ragdoll v%u, xNVSE %08X, jeu %08X", kPluginVersion, nvse->nvseVersion, nvse->runtimeVersion);
+		srand(GetTickCount());
 		LoadConfig();
 
 		g_handle = nvse->GetPluginHandle();
