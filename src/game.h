@@ -82,7 +82,34 @@ namespace actor
 {
 	constexpr UInt32 kProcess = 0x68;          // BaseProcess*
 	constexpr UInt32 kRagdollController = 0xAC; // bhkRagdollController*
+	constexpr UInt32 kVtbl_GetAnimData = 0x1E4; // Actor vtable : AnimData* GetAnimData()
 	constexpr UInt32 kProcess_GetHitData = 0x770; // BaseProcess vtable : ActorHitData* GetHitData()
+	// BaseProcess vtable : PushActorAway(Actor* pushed, float srcX, float srcY, float srcZ, float force)
+	// = la commande de script PushActorAway : ragdoll, puis le jeu fait relever l'acteur
+	constexpr UInt32 kProcess_PushActorAway = 0x418;
+	constexpr UInt32 kProcess_Level = 0x28;      // UInt32 : 0 High, 1 MiddleHigh, 2 MiddleLow, 3 Low
+	constexpr UInt32 kProcess_CharCtrl = 0x138;  // bhkCharacterController* (niveau <= 1)
+	constexpr UInt32 kProcess_Knocked = 0x13C;   // SInt8 : 0 debout, 1 renverse, 2 ragdoll, 3 inconscient, 6 se releve
+	constexpr UInt32 kCharCtrl_Velocity = 0x4F0; // hkVector4, unites Havok/s
+}
+
+// Lecture d'une animation par groupe (sequence de Actor::PlayAnimGroup dans JIP LN)
+namespace anim
+{
+	constexpr UInt32 kAddr_ResolveGroup = 0x897910; // thiscall(Actor*, group, 0, 0, AnimData*) -> UInt16 id complet
+	constexpr UInt32 kAddr_PlayGroup = 0x494740;    // thiscall(AnimData*, UInt16 id, 1, -1, -1)
+	constexpr UInt32 kAddr_ActorAnimNotify = 0x8A73E0; // thiscall(Actor*, 0xE, AnimData+0xE4)
+	constexpr UInt32 kAddr_ActorAnimDone = 0x55D420;   // thiscall(Actor*, 1)
+	constexpr UInt32 kAnimData_E4 = 0xE4;
+	// Table des groupes d'animation : 0xF5 entrees de 0x24 octets, nom en +0
+	constexpr UInt32 kAddr_GroupInfos = 0x11977D8;
+	constexpr UInt32 kGroupInfoSize = 0x24;
+	constexpr UInt32 kGroupCount = 0xF5;
+}
+
+namespace weap
+{
+	constexpr UInt32 kNumProjectiles = 0x11E; // UInt8 : plombs par tir (fusils a pompe)
 }
 
 // ActorHitData (0x64)

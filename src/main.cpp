@@ -65,6 +65,17 @@ namespace
 		bool deferFatal = true;
 		float fatalWait = 0.6f;
 		float fatalMult = 1.0f;
+		float carryVelocity = 1.0f; // part de la vitesse de course gardee en tombant (mort ou renverse)
+		// [Reactions] charge des coups : chaque coup ajoute sa force, la charge retombe avec le temps
+		bool stagger = true;
+		bool knockdown = true;
+		float staggerAt = 60.f;
+		float knockAt = 140.f;
+		float stressHalfLife = 0.4f;
+		float staggerCooldown = 1.5f;
+		float knockForce = 30.f;
+		float knockForceMax = 2.0f;
+		float knockLocalShare = 0.5f;
 		// [RagdollAnim] reglages natifs du jeu
 		bool forceFeedback = true;
 	} g_cfg;
@@ -97,6 +108,16 @@ namespace
 		c.deferFatal = IniInt("Death", "bDeferFatalPush", 1) != 0;
 		c.fatalWait = IniFloat("Death", "fWaitTime", c.fatalWait);
 		c.fatalMult = IniFloat("Death", "fPushMult", c.fatalMult);
+		c.carryVelocity = IniFloat("Death", "fCarryVelocity", c.carryVelocity);
+		c.stagger = IniInt("Reactions", "bStagger", 1) != 0;
+		c.knockdown = IniInt("Reactions", "bKnockdown", 1) != 0;
+		c.staggerAt = IniFloat("Reactions", "fStaggerAt", c.staggerAt);
+		c.knockAt = IniFloat("Reactions", "fKnockdownAt", c.knockAt);
+		c.stressHalfLife = IniFloat("Reactions", "fChargeHalfLife", c.stressHalfLife);
+		c.staggerCooldown = IniFloat("Reactions", "fStaggerCooldown", c.staggerCooldown);
+		c.knockForce = IniFloat("Reactions", "fKnockdownForce", c.knockForce);
+		c.knockForceMax = IniFloat("Reactions", "fKnockdownForceMaxMult", c.knockForceMax);
+		c.knockLocalShare = IniFloat("Reactions", "fKnockdownLocalPush", c.knockLocalShare);
 		c.forceFeedback = IniInt("RagdollAnim", "bRagdollFeedback", 1) != 0;
 		g_cfg = c;
 		Log("Reglages lus : %s (%s)", g_iniPath,
@@ -321,6 +342,7 @@ namespace
 	// ------------------------------------------------------------------ coup fatal : poussee differee
 	// Au moment du coup fatal, le PNJ est souvent encore anime : le moteur ignorerait la poussee. On la garde, et
 	// on l'applique des que ses corps deviennent dynamiques (ragdoll de mort), au meme os et au meme point de l'os.
+	// Meme mecanisme pour un PNJ renverse (PushActorAway) : son ragdoll ne commence qu'une image ou deux plus tard.
 	struct PendingPush
 	{
 		UInt32 refID;      // 0 = case libre
@@ -328,6 +350,8 @@ namespace
 		char bone[32];
 		V3 J;              // impulsion, unites Havok
 		V3 offset;         // point d'impact - centre de l'os au moment du coup
+		V3 carry;          // vitesse de course a ajouter a tous les corps (unites Havok/s)
+		const char* what;  // "Mort" ou "Chute", pour le journal
 		DWORD start;       // GetTickCount
 	};
 	constexpr int kMaxPending = 16;
@@ -335,7 +359,24 @@ namespace
 
 	void ClearPending() { memset(g_pending, 0, sizeof(g_pending)); }
 
-	void QueueFatalPush(void* target, const char* bone, V3 J, V3 offset)
+	// Ajoute la meme vitesse a tous les corps dynamiques : l'elan que l'acteur avait avant de tomber.
+	int AddVelocityToAll(const Body* b, int n, V3 v)
+	{
+		if (Len(v) < 1e-3f) return 0;
+		int done = 0;
+		using Fn = void(__thiscall*)(void*);
+		for (int k = 0; k < n; ++k)
+		{
+			if (!hk::IsDynamic(At<UInt8>(b[k].rb, hk::kMotionType))) continue;
+			float* lv = &At<float>(b[k].rb, hk::kLinVelocity);
+			lv[0] += v.x; lv[1] += v.y; lv[2] += v.z;
+			((Fn)hk::kAddr_UpdateMotion)(b[k].rb);
+			++done;
+		}
+		return done;
+	}
+
+	void QueuePush(void* target, const char* what, const char* bone, V3 J, V3 offset, V3 carry)
 	{
 		PendingPush* slot = nullptr;
 		for (PendingPush& p : g_pending)
@@ -349,6 +390,8 @@ namespace
 		snprintf(slot->bone, sizeof(slot->bone), "%s", bone ? bone : "Bip01 Spine2");
 		slot->J = J;
 		slot->offset = offset;
+		slot->carry = carry;
+		slot->what = what;
 		slot->start = GetTickCount();
 	}
 
@@ -365,19 +408,115 @@ namespace
 			int i = n ? FindBody(b, n, p.bone) : -1;
 			if (i >= 0 && hk::IsDynamic(At<UInt8>(b[i].rb, hk::kMotionType)))
 			{
+				int carried = AddVelocityToAll(b, n, p.carry);
 				int pushed = PushBodyAndNeighbours(b, n, i, p.J, BodyCenter(b[i].rb) + p.offset);
 				if (g_cfg.verbose)
-					Log("Mort de %08X : poussee %.1f sur %s appliquee apres %lu ms, %d corps pousses",
-						p.refID, Len(p.J), p.bone, waited, pushed);
+					Log("%s de %08X : poussee %.1f sur %s appliquee apres %lu ms, %d corps pousses, elan %.2f sur %d corps",
+						p.what, p.refID, Len(p.J), p.bone, waited, pushed, Len(p.carry), carried);
 				p.refID = 0;
 			}
 			else if (waited > (DWORD)(g_cfg.fatalWait * 1000.f))
 			{
 				if (g_cfg.verbose)
-					Log("Mort de %08X : toujours anime apres %lu ms, poussee abandonnee", p.refID, waited);
+					Log("%s de %08X : toujours anime apres %lu ms, poussee abandonnee", p.what, p.refID, waited);
 				p.refID = 0;
 			}
 		}
+	}
+
+	// ------------------------------------------------------------------ etat des acteurs : charge des coups
+	// Chaque coup ajoute sa force a la « charge » du PNJ ; la charge perd la moitie de sa valeur toutes les
+	// fChargeHalfLife secondes. Une rafale ou plusieurs balles rapprochees font donc tituber puis tomber.
+	struct ActorState
+	{
+		UInt32 refID;
+		float charge;
+		DWORD lastHit;
+		DWORD lastStagger;
+	};
+	constexpr int kMaxStates = 32;
+	ActorState g_states[kMaxStates] = {};
+
+	ActorState& StateOf(void* ref)
+	{
+		UInt32 id = RefID(ref);
+		ActorState* oldest = &g_states[0];
+		for (ActorState& s : g_states)
+		{
+			if (s.refID == id) return s;
+			if (s.lastHit < oldest->lastHit) oldest = &s;
+		}
+		*oldest = {id, 0.f, GetTickCount(), 0};
+		return *oldest;
+	}
+
+	float AddCharge(ActorState& s, float amount)
+	{
+		DWORD now = GetTickCount();
+		float dt = (now - s.lastHit) / 1000.f;
+		if (g_cfg.stressHalfLife > 0.f) s.charge *= powf(0.5f, dt / g_cfg.stressHalfLife);
+		s.charge += amount;
+		s.lastHit = now;
+		return s.charge;
+	}
+
+	// ------------------------------------------------------------------ titube et tombe (fonctions du jeu)
+	void* ProcessOf(void* actorRef) { return At<void*>(actorRef, actor::kProcess); }
+
+	bool IsHighProcess(void* actorRef)
+	{
+		void* p = ProcessOf(actorRef);
+		return p && At<UInt32>(p, actor::kProcess_Level) == 0;
+	}
+
+	SInt32 KnockedState(void* actorRef)
+	{
+		void* p = ProcessOf(actorRef);
+		if (!p || At<UInt32>(p, actor::kProcess_Level) > 1) return -1;
+		return At<signed char>(p, actor::kProcess_Knocked);
+	}
+
+	// Vitesse de deplacement de l'acteur (controleur de personnage), unites Havok/s
+	V3 MoveVelocity(void* actorRef)
+	{
+		void* p = ProcessOf(actorRef);
+		if (!p || At<UInt32>(p, actor::kProcess_Level) > 1) return {0, 0, 0};
+		void* cc = At<void*>(p, actor::kProcess_CharCtrl);
+		return cc ? Load3(cc, actor::kCharCtrl_Velocity) : V3{0, 0, 0};
+	}
+
+	UInt32 g_staggerGroup = 0xFFFFFFFF; // cherche par son nom au demarrage
+
+	void FindAnimGroups()
+	{
+		for (UInt32 i = 0; i < anim::kGroupCount; ++i)
+		{
+			const char* name = At<const char*>((void*)anim::kAddr_GroupInfos, i * anim::kGroupInfoSize);
+			if (name && !_stricmp(name, "Stagger")) g_staggerGroup = i;
+		}
+		if (g_staggerGroup != 0xFFFFFFFF) Log("Groupe d'animation Stagger : %02X", g_staggerGroup);
+		else Log("ERREUR : groupe d'animation Stagger introuvable, titubement desactive");
+	}
+
+	// Joue le groupe d'animation sur l'acteur (meme suite d'appels que la commande PlayGroup)
+	bool PlayAnimGroup(void* actorRef, UInt32 group)
+	{
+		using GetAnimData = void* (__thiscall*)(void*);
+		void* ad = ((GetAnimData)(*(void***)actorRef)[actor::kVtbl_GetAnimData / 4])(actorRef);
+		if (!ad) return false;
+		UInt32 full = ((UInt32(__thiscall*)(void*, UInt32, UInt32, UInt32, void*))anim::kAddr_ResolveGroup)(actorRef, group, 0, 0, ad);
+		((void(__thiscall*)(void*, UInt32, UInt32, SInt32, SInt32))anim::kAddr_PlayGroup)(ad, full & 0xFFFF, 1, -1, -1);
+		((void(__thiscall*)(void*, UInt32, UInt32))anim::kAddr_ActorAnimNotify)(actorRef, 0xE, At<UInt32>(ad, anim::kAnimData_E4));
+		((void(__thiscall*)(void*, UInt32))anim::kAddr_ActorAnimDone)(actorRef, 1);
+		return true;
+	}
+
+	// Renverse l'acteur loin du point src (unites du jeu), comme la commande PushActorAway
+	void KnockDown(void* actorRef, V3 src, float force)
+	{
+		void* p = ProcessOf(actorRef);
+		using Fn = void(__thiscall*)(void*, void*, float, float, float, float);
+		((Fn)(*(void***)p)[actor::kProcess_PushActorAway / 4])(p, actorRef, src.x, src.y, src.z, force);
 	}
 
 	// ------------------------------------------------------------------ reaction a un coup
@@ -413,23 +552,56 @@ namespace
 		dir.z = g_cfg.up;
 		dir = Norm(dir);
 
-		float push = g_cfg.basePush + dmg * g_cfg.pushPerDamage;
-		if (melee) push *= g_cfg.meleeMult;
-		if (explosion) push *= g_cfg.explosionMult;
-		if (flags & hit::kFlag_IsCritical) push *= g_cfg.criticalMult;
-		if (push > g_cfg.maxPush) push = g_cfg.maxPush;
+		// force du coup ; un fusil a pompe compte tous ses plombs (xNVSE ne signale qu'un coup par image)
+		void* weapon = At<void*>(hd, hit::kWeapon);
+		int pellets = (!explosion && weapon) ? At<UInt8>(weapon, weap::kNumProjectiles) : 1;
+		if (pellets < 1) pellets = 1;
+		float force = (g_cfg.basePush + dmg * g_cfg.pushPerDamage) * pellets;
+		if (melee) force *= g_cfg.meleeMult;
+		if (explosion) force *= g_cfg.explosionMult;
+		if (flags & hit::kFlag_IsCritical) force *= g_cfg.criticalMult;
+		float push = force > g_cfg.maxPush ? g_cfg.maxPush : force; // impulsion physique, plafonnee
 
 		bool fatal = (flags & hit::kFlag_IsFatal) != 0;
 		if (fatal) push *= g_cfg.fatalMult;
 
+		// classement : tressaille (toujours), titube, ou tombe selon la charge accumulee
+		ActorState& st = StateOf(target);
+		float charge = AddCharge(st, force);
+		SInt32 knocked = KnockedState(target);
+		bool standing = knocked == 0 && IsHighProcess(target) && target != Player();
+		const char* reaction = "tressaille";
+		V3 carry = MoveVelocity(target) * g_cfg.carryVelocity;
+
+		if (fatal)
+			reaction = "meurt";
+		else if (standing && g_cfg.knockdown && charge >= g_cfg.knockAt)
+		{
+			float scale = charge / g_cfg.knockAt;
+			if (scale > g_cfg.knockForceMax) scale = g_cfg.knockForceMax;
+			void* srcRef = explosion && proj ? proj : attacker;
+			V3 srcGame = srcRef ? Load3(srcRef, refr::kPos) : (p - dir) * 7.f;
+			KnockDown(target, srcGame, g_cfg.knockForce * scale);
+			// le ragdoll commence une image plus tard : poussee au point touche et elan, des qu'il est dynamique
+			QueuePush(target, "Chute", b[i].name, dir * (push * g_cfg.knockLocalShare), p - BodyCenter(b[i].rb), carry);
+			st.charge = 0.f;
+			reaction = "tombe";
+		}
+		else if (standing && g_cfg.stagger && charge >= g_cfg.staggerAt && g_staggerGroup != 0xFFFFFFFF
+			&& GetTickCount() - st.lastStagger > (DWORD)(g_cfg.staggerCooldown * 1000.f))
+		{
+			if (PlayAnimGroup(target, g_staggerGroup)) { st.lastStagger = GetTickCount(); reaction = "titube"; }
+		}
+
 		int pushed = PushBodyAndNeighbours(b, n, i, dir * push, p);
 		bool deferred = !pushed && fatal && g_cfg.deferFatal;
-		if (deferred) QueueFatalPush(target, b[i].name, dir * push, p - BodyCenter(b[i].rb));
+		if (deferred) QueuePush(target, "Mort", b[i].name, dir * push, p - BodyCenter(b[i].rb), carry);
 		if (g_cfg.verbose)
-			Log("Coup sur %08X par %08X : %s%s, degats %.1f, drapeaux %X, os %s (%s), poussee %.1f, %d corps pousses%s",
+			Log("Coup sur %08X par %08X : %s%s, degats %.1f x%d, drapeaux %X, os %s (%s), force %.1f, charge %.1f -> %s, "
+				"poussee %.1f, %d corps pousses%s",
 				RefID(target), RefID(attacker), explosion ? "explosion" : melee ? "melee" : "tir", fatal ? " FATAL" : "",
-				dmg, flags, b[i].name ? b[i].name : "?", hk::MotionName(At<UInt8>(b[i].rb, hk::kMotionType)), push,
-				pushed, deferred ? " (mis en attente du ragdoll de mort)"
+				dmg, pellets, flags, b[i].name ? b[i].name : "?", hk::MotionName(At<UInt8>(b[i].rb, hk::kMotionType)),
+				force, charge, reaction, push, pushed, deferred ? " (mis en attente du ragdoll de mort)"
 				: pushed ? "" : " (corps animes : le Ragdoll Feedback ne les a pas rendus dynamiques)");
 	}
 
@@ -546,6 +718,8 @@ namespace
 			Log("Reglages natifs [RagdollAnim] (avant -> apres) :");
 			ApplyGameSettings();
 			CheckRagdollsMod();
+			__try { FindAnimGroups(); }
+			__except (EXCEPTION_EXECUTE_HANDLER) { Log("ERREUR : table des groupes d'animation illisible"); }
 			break;
 		case NVSEMessagingInterface::kMessage_PostLoadGame:
 			LoadConfig(); // relu a chaque chargement de partie, pour regler sans relancer le jeu
