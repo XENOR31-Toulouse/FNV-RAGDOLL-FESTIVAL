@@ -2,7 +2,7 @@
 
 Plugin xNVSE pour Fallout New Vegas : les PNJ **vivants** réagissent physiquement aux coups. Le mod est autonome : il remplace le mod Ragdolls (ne pas les activer ensemble). Conception : [docs/00-conception.md](docs/00-conception.md).
 
-État : version 0.7.0-alpha, **pas encore testée en jeu**. Depuis la 0.7, ce sont de vrais muscles d'articulation qui le tiennent debout : la pose debout est photographiée à la mort et chaque articulation y ramène son os ; les jambes portent le corps puis plient quand ses forces s'en vont. Les PNJ vivants restent exactement ceux du jeu de base : tout se joue à leur mort, façon Euphoria, exagérée. Presque chaque mort (tir à la tête compris) commence par une **agonie debout** : le PNJ essaie de tenir debout, cherche son équilibre et fait des pas pour se rattraper quand la balle ou son élan le déséquilibrent, écarte les bras, porte souvent la main à sa blessure, encaisse les balles suivantes, puis ses jambes cèdent ; il tombe en se protégeant et se tord au sol. Explosions, feu et courant ont leurs propres morts ; les créatures aussi. Les réactions des vivants (étapes 2 et 3) existent encore, désactivées (`bLivingReactions`). Étapes 0 à 8 écrites et compilées, **pas encore testées en jeu**. Un PNJ touché tressaille, titube ou tombe selon la force des coups reçus ; à la mort, la poussée part de l'endroit touché et le corps garde son élan. Pendant une chute ou une mort, ses articulations se raidissent et ses mains se tendent pour se rattraper. En mourant, il peut porter la main à sa blessure, ou rester debout un instant avant que ses jambes cèdent. Dans le feu, il bat des bras et des jambes ; électrocuté, il tremble ; projeté par une explosion, ses bras tournent en moulinet pendant le vol.
+État : version 0.8.0-alpha, **pas encore testée en jeu** (les calculs d'équilibre sont vérifiés hors du jeu par `test.cmd`). Les PNJ vivants restent ceux du jeu de base : tout se joue à leur mort, façon Euphoria, exagérée. Presque chaque mort (tir à la tête compris) commence par une **agonie debout** : ses jambes le portent en poussant sur le sol, il se retient, fait des pas pour se rattraper quand la balle ou son élan le déséquilibrent (point de capture), mouline des bras, regarde son tireur, porte la main à sa blessure, encaisse les balles suivantes (jambe touchée qui flanche, bras qui pend, dos qui plie). Il tombe quand il perd vraiment l'équilibre ou que ses forces sont parties, se protège en tombant, puis se tord au sol. Explosions, feu et courant ont leurs propres morts ; les créatures ont un modèle plus simple.
 
 ## Prérequis
 
@@ -17,6 +17,14 @@ build.cmd
 ```
 
 Le script produit `build\NVReactiveRagdoll.dll` (32 bits), le copie avec le .ini dans `dist\Data\NVSE\Plugins\`, et dans le mod Mod Organizer `NV Reactive Ragdoll (dev)` s'il existe. Le .ini du mod MO2 n'est jamais écrasé : tes réglages restent.
+
+## Tester les calculs hors du jeu
+
+```
+test.cmd
+```
+
+Compile `src\main.cpp` avec ses tests (`src\tests.inl`) et les lance : les vrais calculs du plugin tournent sur un mannequin simulé (muscles d'articulation, jambes qui portent, retenue, pas du bon côté, perte d'équilibre). Pas d'articulations ni de décor : ça vérifie les signes et la stabilité, pas le rendu en jeu.
 
 ## Faire le paquet à publier
 
@@ -46,7 +54,7 @@ Ce qu'il faut regarder dans le journal : la colonne « anime(keyframed) » ou «
 
 ## Réglages
 
-**En jeu** : menu pause, *Mod Configuration*, page **NV Reactive Ragdoll** (10 pages, 96 options : tous les réglages du .ini). Il faut [The Mod Configuration Menu](https://www.nexusmods.com/newvegas/mods/42507) et [MCM Extender](https://www.nexusmods.com/newvegas/mods/93642) ; sans eux, le mod marche quand même, réglable par le fichier. Les changements s'appliquent à la fermeture du menu pause.
+**En jeu** : menu pause, *Mod Configuration*, page **NV Reactive Ragdoll** (10 pages, 105 options : tous les réglages du .ini). Il faut [The Mod Configuration Menu](https://www.nexusmods.com/newvegas/mods/42507) et [MCM Extender](https://www.nexusmods.com/newvegas/mods/93642) ; sans eux, le mod marche quand même, réglable par le fichier. Les changements s'appliquent à la fermeture du menu pause.
 
 **Fichier** : `Data\Config\NVReactiveRagdoll.ini` (c'est là que le menu écrit), relu à chaque chargement de partie et dès qu'il change. Un .ini à l'ancienne place (`NVSE\Plugins\`, version 0.1.0) est encore lu s'il n'y en a pas dans `Config\`. La section `[RagdollAnim]` écrit les réglages natifs du jeu qui pilotent le mélange animation / physique ; le journal affiche leurs valeurs avant et après.
 

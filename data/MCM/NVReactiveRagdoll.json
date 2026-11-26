@@ -96,7 +96,7 @@
                 "1": {
                     "title": "Agonie debout",
                     "enable": 1,
-                    "mouse": "A sa mort, il essaie de tenir debout, fait des pas, encaisse, puis ses jambes cedent.",
+                    "mouse": "A sa mort, il essaie de tenir debout, fait des pas, encaisse, puis perd l'equilibre.",
                     "vars": [
                         {
                             "configINI": "Balance:bEnabled",
@@ -106,9 +106,9 @@
                     "type": 5
                 },
                 "2": {
-                    "title": "Duree minimum",
+                    "title": "Forces : minimum",
                     "enable": 1,
-                    "mouse": "Secondes debout, au moins.",
+                    "mouse": "Secondes de forces, au moins (il tombe avant s'il perd l'equilibre).",
                     "vars": [
                         {
                             "configINI": "Balance:fTimeMin",
@@ -120,13 +120,13 @@
                         "valueDecimal": 1,
                         "valueIncrement": 0.1,
                         "valueMin": 0,
-                        "valueMax": 8
+                        "valueMax": 10
                     }
                 },
                 "3": {
-                    "title": "Duree maximum",
+                    "title": "Forces : maximum",
                     "enable": 1,
-                    "mouse": "Secondes debout, au plus (tire au hasard entre les deux).",
+                    "mouse": "Secondes de forces, au plus (tire au hasard entre les deux).",
                     "vars": [
                         {
                             "configINI": "Balance:fTimeMax",
@@ -138,7 +138,7 @@
                         "valueDecimal": 1,
                         "valueIncrement": 0.1,
                         "valueMin": 0,
-                        "valueMax": 8
+                        "valueMax": 10
                     }
                 },
                 "4": {
@@ -160,72 +160,6 @@
                     }
                 },
                 "5": {
-                    "title": "Muscles des articulations",
-                    "enable": 1,
-                    "mouse": "Comme Euphoria : chaque articulation tient la pose debout, les jambes portent le corps.",
-                    "vars": [
-                        {
-                            "configINI": "Balance:bJointMuscles",
-                            "default": 1
-                        }
-                    ],
-                    "type": 5
-                },
-                "6": {
-                    "title": "Force des muscles",
-                    "enable": 1,
-                    "mouse": "Force qui ramene chaque os dans la pose debout.",
-                    "vars": [
-                        {
-                            "configINI": "Balance:fJointStrength",
-                            "default": 30
-                        }
-                    ],
-                    "type": 2,
-                    "scale": {
-                        "valueDecimal": 0,
-                        "valueIncrement": 1,
-                        "valueMin": 0,
-                        "valueMax": 150
-                    }
-                },
-                "7": {
-                    "title": "Force des jambes",
-                    "enable": 1,
-                    "mouse": "Les jambes portent le corps ; trop bas = il s'effondre.",
-                    "vars": [
-                        {
-                            "configINI": "Balance:fLegStrength",
-                            "default": 1.5
-                        }
-                    ],
-                    "type": 2.5,
-                    "scale": {
-                        "valueDecimal": 1,
-                        "valueIncrement": 0.1,
-                        "valueMin": 0,
-                        "valueMax": 5
-                    }
-                },
-                "8": {
-                    "title": "Coup de pouce",
-                    "enable": 1,
-                    "mouse": "Part du poids du haut du corps portee en plus des muscles.",
-                    "vars": [
-                        {
-                            "configINI": "Balance:fSupport",
-                            "default": 0.35
-                        }
-                    ],
-                    "type": 2.5,
-                    "scale": {
-                        "valueDecimal": 2,
-                        "valueIncrement": 0.05,
-                        "valueMin": 0,
-                        "valueMax": 1
-                    }
-                },
-                "9": {
                     "title": "Poussee de la balle qui tue",
                     "enable": 1,
                     "mouse": "Plus bas = il titube au lieu d'etre jete.",
@@ -243,7 +177,7 @@
                         "valueMax": 2
                     }
                 },
-                "10": {
+                "6": {
                     "title": "Balles encaissees",
                     "enable": 1,
                     "mouse": "Chaque balle pendant l'agonie lui retire cette part du temps restant.",
@@ -261,10 +195,64 @@
                         "valueMax": 1
                     }
                 },
-                "11": {
-                    "title": "Bras ecartes",
+                "7": {
+                    "title": "Membre touche",
                     "enable": 1,
-                    "mouse": "Force des bras qui s'ecartent pour l'equilibre.",
+                    "mouse": "Force qui reste a une jambe ou un bras touche.",
+                    "vars": [
+                        {
+                            "configINI": "Balance:fWoundedLimb",
+                            "default": 0.3
+                        }
+                    ],
+                    "type": 2.5,
+                    "scale": {
+                        "valueDecimal": 2,
+                        "valueIncrement": 0.05,
+                        "valueMin": 0,
+                        "valueMax": 1
+                    }
+                },
+                "8": {
+                    "title": "Dos qui plie",
+                    "enable": 1,
+                    "mouse": "Une balle dans le tronc lui plie le dos pendant ... secondes.",
+                    "vars": [
+                        {
+                            "configINI": "Balance:fFlinchTime",
+                            "default": 0.25
+                        }
+                    ],
+                    "type": 2.5,
+                    "scale": {
+                        "valueDecimal": 2,
+                        "valueIncrement": 0.05,
+                        "valueMin": 0,
+                        "valueMax": 2
+                    }
+                },
+                "9": {
+                    "title": "Regarde son tireur",
+                    "enable": 1,
+                    "mouse": "Il tourne la tete vers celui qui lui tire dessus (0 = non).",
+                    "vars": [
+                        {
+                            "configINI": "Balance:fHeadLook",
+                            "default": 1.0
+                        }
+                    ],
+                    "type": 2.5,
+                    "scale": {
+                        "valueDecimal": 1,
+                        "valueIncrement": 0.1,
+                        "valueMin": 0,
+                        "valueMax": 2
+                    }
+                },
+                "10": {
+                    "title": "Bras en balancier",
+                    "enable": 1,
+                    "mouse": "Force des bras qui s'ecartent et moulinent pour l'equilibre.",
                     "vars": [
                         {
                             "configINI": "Balance:fArms",
@@ -278,6 +266,42 @@
                         "valueMin": 0,
                         "valueMax": 3
                     }
+                },
+                "11": {
+                    "title": "Balancement",
+                    "enable": 1,
+                    "mouse": "Amplitude du balancement du tronc.",
+                    "vars": [
+                        {
+                            "configINI": "Balance:fSway",
+                            "default": 0.2
+                        }
+                    ],
+                    "type": 2.5,
+                    "scale": {
+                        "valueDecimal": 2,
+                        "valueIncrement": 0.05,
+                        "valueMin": 0,
+                        "valueMax": 1
+                    }
+                },
+                "12": {
+                    "title": "Creatures : poids porte",
+                    "enable": 1,
+                    "mouse": "Les creatures n'ont pas le modele de jambes : part de leur poids portee.",
+                    "vars": [
+                        {
+                            "configINI": "Balance:fSupport",
+                            "default": 0.6
+                        }
+                    ],
+                    "type": 2.5,
+                    "scale": {
+                        "valueDecimal": 2,
+                        "valueIncrement": 0.05,
+                        "valueMin": 0,
+                        "valueMax": 1
+                    }
                 }
             }
         },
@@ -288,6 +312,54 @@
             "enable": 1,
             "options": {
                 "1": {
+                    "title": "Muscles des articulations",
+                    "enable": 1,
+                    "mouse": "Comme Euphoria : chaque articulation tient la pose qu'il avait debout.",
+                    "vars": [
+                        {
+                            "configINI": "Balance:bJointMuscles",
+                            "default": 1
+                        }
+                    ],
+                    "type": 5
+                },
+                "2": {
+                    "title": "Force des muscles",
+                    "enable": 1,
+                    "mouse": "Force qui ramene chaque os dans la pose debout.",
+                    "vars": [
+                        {
+                            "configINI": "Balance:fJointStrength",
+                            "default": 30
+                        }
+                    ],
+                    "type": 2,
+                    "scale": {
+                        "valueDecimal": 0,
+                        "valueIncrement": 1,
+                        "valueMin": 0,
+                        "valueMax": 150
+                    }
+                },
+                "3": {
+                    "title": "Force des jambes",
+                    "enable": 1,
+                    "mouse": "Par rapport a la force des muscles.",
+                    "vars": [
+                        {
+                            "configINI": "Balance:fLegStrength",
+                            "default": 1.5
+                        }
+                    ],
+                    "type": 2.5,
+                    "scale": {
+                        "valueDecimal": 1,
+                        "valueIncrement": 0.1,
+                        "valueMin": 0,
+                        "valueMax": 5
+                    }
+                },
+                "4": {
                     "title": "Amortissement des muscles",
                     "enable": 1,
                     "mouse": "Plus haut = mouvements plus calmes.",
@@ -305,7 +377,7 @@
                         "valueMax": 30
                     }
                 },
-                "2": {
+                "5": {
                     "title": "Vitesse max des muscles",
                     "enable": 1,
                     "mouse": "Rotation ajoutee au plus par image.",
@@ -323,7 +395,7 @@
                         "valueMax": 30
                     }
                 },
-                "3": {
+                "6": {
                     "title": "Force du dos",
                     "enable": 1,
                     "mouse": "Par rapport a la force des muscles.",
@@ -341,7 +413,7 @@
                         "valueMax": 5
                     }
                 },
-                "4": {
+                "7": {
                     "title": "Force des bras",
                     "enable": 1,
                     "mouse": "Bras plus ou moins souples.",
@@ -359,7 +431,7 @@
                         "valueMax": 5
                     }
                 },
-                "5": {
+                "8": {
                     "title": "Force du cou",
                     "enable": 1,
                     "mouse": "Plus bas = la tete ballotte.",
@@ -377,7 +449,7 @@
                         "valueMax": 5
                     }
                 },
-                "6": {
+                "9": {
                     "title": "Jambe qui fait le pas",
                     "enable": 1,
                     "mouse": "Part de sa force gardee pendant le pas.",
@@ -395,7 +467,7 @@
                         "valueMax": 1
                     }
                 },
-                "7": {
+                "10": {
                     "title": "Pose gardee en tombant",
                     "enable": 1,
                     "mouse": "0 = tombe comme un sac.",
@@ -422,12 +494,48 @@
             "enable": 1,
             "options": {
                 "1": {
-                    "title": "Freinage",
+                    "title": "Adherence des pieds",
                     "enable": 1,
-                    "mouse": "Freine ses glissades (ses pieds accrochent le sol).",
+                    "mouse": "Plus bas = il fait des pas plus vite ; plus haut = il encaisse sur place.",
                     "vars": [
                         {
-                            "configINI": "Balance:fDamping",
+                            "configINI": "Stand:fGrip",
+                            "default": 0.35
+                        }
+                    ],
+                    "type": 2.5,
+                    "scale": {
+                        "valueDecimal": 2,
+                        "valueIncrement": 0.05,
+                        "valueMin": 0,
+                        "valueMax": 1.5
+                    }
+                },
+                "2": {
+                    "title": "Retenue",
+                    "enable": 1,
+                    "mouse": "Force qui le ramene au-dessus de ses pieds.",
+                    "vars": [
+                        {
+                            "configINI": "Stand:fHoldGain",
+                            "default": 2.0
+                        }
+                    ],
+                    "type": 2.5,
+                    "scale": {
+                        "valueDecimal": 1,
+                        "valueIncrement": 0.1,
+                        "valueMin": 0,
+                        "valueMax": 10
+                    }
+                },
+                "3": {
+                    "title": "Retenue : amortissement",
+                    "enable": 1,
+                    "mouse": "Plus haut = il s'arrete plus net.",
+                    "vars": [
+                        {
+                            "configINI": "Stand:fHoldDamping",
                             "default": 1.5
                         }
                     ],
@@ -439,86 +547,14 @@
                         "valueMax": 10
                     }
                 },
-                "2": {
-                    "title": "Torse tenu droit",
-                    "enable": 1,
-                    "mouse": "Force qui tient le torse droit.",
-                    "vars": [
-                        {
-                            "configINI": "Balance:fUprightGain",
-                            "default": 6.0
-                        }
-                    ],
-                    "type": 2.5,
-                    "scale": {
-                        "valueDecimal": 1,
-                        "valueIncrement": 0.5,
-                        "valueMin": 0,
-                        "valueMax": 20
-                    }
-                },
-                "3": {
-                    "title": "Oscillation",
-                    "enable": 1,
-                    "mouse": "Amplitude du balancement du torse.",
-                    "vars": [
-                        {
-                            "configINI": "Balance:fSway",
-                            "default": 0.2
-                        }
-                    ],
-                    "type": 2.5,
-                    "scale": {
-                        "valueDecimal": 2,
-                        "valueIncrement": 0.05,
-                        "valueMin": 0,
-                        "valueMax": 1
-                    }
-                },
                 "4": {
-                    "title": "Duree d'un pas",
+                    "title": "Jambes : raideur",
                     "enable": 1,
-                    "mouse": "En secondes.",
+                    "mouse": "Ressort des jambes qui portent le corps.",
                     "vars": [
                         {
-                            "configINI": "Balance:fStepTime",
-                            "default": 0.35
-                        }
-                    ],
-                    "type": 2.5,
-                    "scale": {
-                        "valueDecimal": 2,
-                        "valueIncrement": 0.05,
-                        "valueMin": 0.1,
-                        "valueMax": 1.5
-                    }
-                },
-                "5": {
-                    "title": "Anticipation",
-                    "enable": 1,
-                    "mouse": "Le pied va la ou il sera dans ... secondes.",
-                    "vars": [
-                        {
-                            "configINI": "Balance:fStepLead",
-                            "default": 0.35
-                        }
-                    ],
-                    "type": 2.5,
-                    "scale": {
-                        "valueDecimal": 2,
-                        "valueIncrement": 0.05,
-                        "valueMin": 0,
-                        "valueMax": 1.5
-                    }
-                },
-                "6": {
-                    "title": "Force du pas",
-                    "enable": 1,
-                    "mouse": "Force qui amene le pied.",
-                    "vars": [
-                        {
-                            "configINI": "Balance:fStepPull",
-                            "default": 40
+                            "configINI": "Stand:fLegStiffness",
+                            "default": 16
                         }
                     ],
                     "type": 2,
@@ -526,16 +562,16 @@
                         "valueDecimal": 0,
                         "valueIncrement": 1,
                         "valueMin": 0,
-                        "valueMax": 150
+                        "valueMax": 60
                     }
                 },
-                "7": {
-                    "title": "Amortissement du pas",
+                "5": {
+                    "title": "Jambes : amortissement",
                     "enable": 1,
-                    "mouse": "Plus haut = pas plus calmes.",
+                    "mouse": "8 = sans rebond pour une raideur de 16.",
                     "vars": [
                         {
-                            "configINI": "Balance:fStepDamping",
+                            "configINI": "Stand:fLegDamping",
                             "default": 8.0
                         }
                     ],
@@ -547,14 +583,14 @@
                         "valueMax": 30
                     }
                 },
-                "8": {
-                    "title": "Hauteur du pas",
+                "6": {
+                    "title": "Jambes : force maximale",
                     "enable": 1,
-                    "mouse": "Le pied se leve de ... (unites Havok).",
+                    "mouse": "En poids du corps. Sous 1, il ne tient pas debout.",
                     "vars": [
                         {
-                            "configINI": "Balance:fStepLift",
-                            "default": 1.5
+                            "configINI": "Stand:fLegMaxForce",
+                            "default": 2.5
                         }
                     ],
                     "type": 2.5,
@@ -562,25 +598,151 @@
                         "valueDecimal": 1,
                         "valueIncrement": 0.1,
                         "valueMin": 0,
-                        "valueMax": 5
+                        "valueMax": 6
                     }
                 },
-                "9": {
-                    "title": "Vitesse max du pied",
+                "7": {
+                    "title": "Genoux qui plient",
                     "enable": 1,
-                    "mouse": "Vitesse ajoutee au plus par image.",
+                    "mouse": "Part de sa hauteur perdue quand ses forces s'en vont.",
                     "vars": [
                         {
-                            "configINI": "Balance:fStepMaxSpeed",
-                            "default": 5.0
+                            "configINI": "Stand:fSag",
+                            "default": 0.4
+                        }
+                    ],
+                    "type": 2.5,
+                    "scale": {
+                        "valueDecimal": 2,
+                        "valueIncrement": 0.05,
+                        "valueMin": 0,
+                        "valueMax": 0.8
+                    }
+                },
+                "8": {
+                    "title": "Tronc tenu droit",
+                    "enable": 1,
+                    "mouse": "Rappel du tronc vers la verticale.",
+                    "vars": [
+                        {
+                            "configINI": "Stand:fUpright",
+                            "default": 2.0
                         }
                     ],
                     "type": 2.5,
                     "scale": {
                         "valueDecimal": 1,
-                        "valueIncrement": 0.5,
+                        "valueIncrement": 0.1,
                         "valueMin": 0,
-                        "valueMax": 20
+                        "valueMax": 10
+                    }
+                },
+                "9": {
+                    "title": "Duree d'un pas",
+                    "enable": 1,
+                    "mouse": "1 = un temps de chute naturel du corps (~0,3 s).",
+                    "vars": [
+                        {
+                            "configINI": "Stand:fStepTime",
+                            "default": 1.1
+                        }
+                    ],
+                    "type": 2.5,
+                    "scale": {
+                        "valueDecimal": 2,
+                        "valueIncrement": 0.05,
+                        "valueMin": 0.3,
+                        "valueMax": 3
+                    }
+                },
+                "10": {
+                    "title": "Anticipation des pas",
+                    "enable": 1,
+                    "mouse": "1 = le pied va la ou il faut pour s'arreter.",
+                    "vars": [
+                        {
+                            "configINI": "Stand:fStepLead",
+                            "default": 1.0
+                        }
+                    ],
+                    "type": 2.5,
+                    "scale": {
+                        "valueDecimal": 2,
+                        "valueIncrement": 0.05,
+                        "valueMin": 0,
+                        "valueMax": 3
+                    }
+                },
+                "11": {
+                    "title": "Hauteur du pas",
+                    "enable": 1,
+                    "mouse": "En hauteurs de bassin.",
+                    "vars": [
+                        {
+                            "configINI": "Stand:fStepLift",
+                            "default": 0.12
+                        }
+                    ],
+                    "type": 2.5,
+                    "scale": {
+                        "valueDecimal": 2,
+                        "valueIncrement": 0.01,
+                        "valueMin": 0,
+                        "valueMax": 0.5
+                    }
+                },
+                "12": {
+                    "title": "Zone sans pas",
+                    "enable": 1,
+                    "mouse": "Rayon autour de ses pieds ou il n'a pas besoin de faire un pas.",
+                    "vars": [
+                        {
+                            "configINI": "Stand:fStepZone",
+                            "default": 0.12
+                        }
+                    ],
+                    "type": 2.5,
+                    "scale": {
+                        "valueDecimal": 2,
+                        "valueIncrement": 0.01,
+                        "valueMin": 0,
+                        "valueMax": 0.5
+                    }
+                },
+                "13": {
+                    "title": "Inclinaison maximale",
+                    "enable": 1,
+                    "mouse": "Degres : au-dela, il a perdu l'equilibre et tombe.",
+                    "vars": [
+                        {
+                            "configINI": "Stand:fMaxTilt",
+                            "default": 60
+                        }
+                    ],
+                    "type": 2,
+                    "scale": {
+                        "valueDecimal": 0,
+                        "valueIncrement": 1,
+                        "valueMin": 10,
+                        "valueMax": 90
+                    }
+                },
+                "14": {
+                    "title": "Hauteur minimale",
+                    "enable": 1,
+                    "mouse": "Bassin plus bas que cette part de sa hauteur : ses jambes ont lache.",
+                    "vars": [
+                        {
+                            "configINI": "Stand:fMinHeight",
+                            "default": 0.45
+                        }
+                    ],
+                    "type": 2.5,
+                    "scale": {
+                        "valueDecimal": 2,
+                        "valueIncrement": 0.05,
+                        "valueMin": 0.1,
+                        "valueMax": 0.9
                     }
                 }
             }
@@ -920,11 +1082,11 @@
                 "5": {
                     "title": "Duree (mort)",
                     "enable": 1,
-                    "mouse": "Pendant la chute, en secondes.",
+                    "mouse": "Duree maximale de la chute ; ecourtee des qu'il est au sol.",
                     "vars": [
                         {
                             "configINI": "Muscles:fDeathTime",
-                            "default": 0.8
+                            "default": 1.5
                         }
                     ],
                     "type": 2.5,

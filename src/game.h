@@ -73,6 +73,7 @@ namespace form
 namespace refr
 {
 	constexpr UInt32 kBaseForm = 0x20;    // TESForm*
+	constexpr UInt32 kRot = 0x24;         // float[3], radians ; +8 = cap (0 = nord, +Y ; sens des aiguilles)
 	constexpr UInt32 kPos = 0x30;         // float[3], unites du jeu
 	constexpr UInt32 kRenderState = 0x64; // RenderState* ; RenderState+0x14 = NiNode* racine 3D
 	constexpr UInt32 kRenderRoot = 0x14;

@@ -19,8 +19,8 @@
 
 namespace
 {
-	constexpr UInt32 kPluginVersion = 7;            // pour xNVSE : entier qui augmente a chaque version publiee
-	constexpr const char* kVersionName = "0.7.0-alpha"; // pour les joueurs : version du paquet
+	constexpr UInt32 kPluginVersion = 8;            // pour xNVSE : entier qui augmente a chaque version publiee
+	constexpr const char* kVersionName = "0.8.0-alpha"; // pour les joueurs : version du paquet
 	constexpr const char* kPluginName = "NVReactiveRagdoll";
 
 	PluginHandle g_handle = 0xFFFFFFFF;
@@ -86,7 +86,7 @@ namespace
 		bool musclesOnKnockdown = true;
 		bool musclesOnDeath = true;
 		float muscleTime = 1.5f;
-		float muscleDeathTime = 0.8f;
+		float muscleDeathTime = 1.5f; // duree maximale de la chute (ecourtee des qu'il est au sol)
 		float jointDamping = 0.25f;
 		float neckDamping = 0.5f;
 		float armPull = 25.f;
@@ -102,19 +102,31 @@ namespace
 		float balanceTimeMin = 1.5f;
 		float balanceTimeMax = 3.5f;
 		float balanceMaxDamage = 400.f;
-		float balanceSupport = 0.35f; // petit coup de pouce : ce sont les muscles des jambes qui portent le corps
+		float balanceSupport = 0.6f;  // creatures seulement : part du poids portee (elles n'ont pas le modele de jambes)
 		float balancePushMult = 0.6f;
-		float balanceDamping = 1.5f;
-		float uprightGain = 6.f;
 		float sway = 0.2f;
-		float stepTime = 0.35f;
-		float stepLead = 0.35f;
-		float stepPull = 40.f;
-		float stepDamping = 8.f;
-		float stepLift = 1.5f;
-		float stepMaxDv = 5.f;
 		float balanceArms = 0.6f;
 		float hitVitalityLoss = 0.35f;
+		// Equilibre des humains. Tout est sans unite : les longueurs en hauteur de bassin (h0), les temps en
+		// T0 = racine(h0 / gravite), le temps de chute naturel du corps. Les reglages valent donc quelle que soit
+		// l'echelle du moteur physique.
+		float legStiffness = 16.f;    // ressort des jambes (x gravite / h0)
+		float legDamping = 8.f;       // son amortissement (critique = 2 racine(raideur))
+		float legMaxForce = 2.5f;     // force maximale des jambes, en poids du corps
+		float sag = 0.4f;             // part de sa hauteur perdue quand ses forces s'en vont (genoux qui plient)
+		float friction = 0.35f;       // il se retient au plus avec cette force (x poids) ; au-dela il doit faire un pas
+		float holdGain = 2.f;         // rappel du corps au-dessus de ses appuis
+		float holdDamping = 1.5f;
+		float uprightGain = 2.f;      // rappel du tronc vers la verticale (x 1/T0)
+		float stepTime = 1.1f;        // duree d'un pas (x T0)
+		float stepLead = 1.0f;        // anticipation du point de capture (x T0 ; 1 = pendule inverse)
+		float stepLift = 0.12f;       // hauteur du pas (x h0)
+		float stepZone = 0.12f;       // rayon de la zone d'appui autour des pieds (x h0)
+		float maxTilt = 60.f;         // degres : au-dela il a perdu l'equilibre
+		float minHeight = 0.45f;      // bassin plus bas que ca (x h0) : ses jambes ont lache
+		float headLook = 1.f;         // il regarde celui qui lui tire dessus
+		float woundedLimb = 0.3f;     // force qui reste a un membre touche
+		float flinchTime = 0.25f;     // une balle dans le tronc : le dos se plie pendant ... s
 		// [Balance] muscles d'articulation vers la pose debout photographiee a la mort
 		bool pose = true;
 		float poseStrength = 30.f;
@@ -234,17 +246,27 @@ namespace
 		c.balanceMaxDamage = IniFloat("Balance", "fMaxDamage", c.balanceMaxDamage);
 		c.balanceSupport = IniFloat("Balance", "fSupport", c.balanceSupport);
 		c.balancePushMult = IniFloat("Balance", "fPushMult", c.balancePushMult);
-		c.balanceDamping = IniFloat("Balance", "fDamping", c.balanceDamping);
-		c.uprightGain = IniFloat("Balance", "fUprightGain", c.uprightGain);
 		c.sway = IniFloat("Balance", "fSway", c.sway);
-		c.stepTime = IniFloat("Balance", "fStepTime", c.stepTime);
-		c.stepLead = IniFloat("Balance", "fStepLead", c.stepLead);
-		c.stepPull = IniFloat("Balance", "fStepPull", c.stepPull);
-		c.stepDamping = IniFloat("Balance", "fStepDamping", c.stepDamping);
-		c.stepLift = IniFloat("Balance", "fStepLift", c.stepLift);
-		c.stepMaxDv = IniFloat("Balance", "fStepMaxSpeed", c.stepMaxDv);
 		c.balanceArms = IniFloat("Balance", "fArms", c.balanceArms);
 		c.hitVitalityLoss = IniFloat("Balance", "fHitWeaken", c.hitVitalityLoss);
+		c.woundedLimb = IniFloat("Balance", "fWoundedLimb", c.woundedLimb);
+		c.flinchTime = IniFloat("Balance", "fFlinchTime", c.flinchTime);
+		c.headLook = IniFloat("Balance", "fHeadLook", c.headLook);
+		// [Stand] : nouvelles cles (0.8), sans unite ; les anciennes cles de pas de [Balance] ne sont plus lues
+		c.legStiffness = IniFloat("Stand", "fLegStiffness", c.legStiffness);
+		c.legDamping = IniFloat("Stand", "fLegDamping", c.legDamping);
+		c.legMaxForce = IniFloat("Stand", "fLegMaxForce", c.legMaxForce);
+		c.sag = IniFloat("Stand", "fSag", c.sag);
+		c.friction = IniFloat("Stand", "fGrip", c.friction);
+		c.holdGain = IniFloat("Stand", "fHoldGain", c.holdGain);
+		c.holdDamping = IniFloat("Stand", "fHoldDamping", c.holdDamping);
+		c.uprightGain = IniFloat("Stand", "fUpright", c.uprightGain);
+		c.stepTime = IniFloat("Stand", "fStepTime", c.stepTime);
+		c.stepLead = IniFloat("Stand", "fStepLead", c.stepLead);
+		c.stepLift = IniFloat("Stand", "fStepLift", c.stepLift);
+		c.stepZone = IniFloat("Stand", "fStepZone", c.stepZone);
+		c.maxTilt = IniFloat("Stand", "fMaxTilt", c.maxTilt);
+		c.minHeight = IniFloat("Stand", "fMinHeight", c.minHeight);
 		c.pose = IniInt("Balance", "bJointMuscles", 1) != 0;
 		c.poseStrength = IniFloat("Balance", "fJointStrength", c.poseStrength);
 		c.poseDamping = IniFloat("Balance", "fJointDamping", c.poseDamping);
@@ -426,6 +448,16 @@ namespace
 
 	V3 BodyCenter(UInt8* rb) { return Load3(rb, hk::kCenterOfMass); }
 
+	// Reveille le corps apres un changement de vitesse (fonction du jeu ; rien dans le programme de test)
+	void Wake(UInt8* rb)
+	{
+#ifndef RR_TEST
+		((void(__thiscall*)(void*))hk::kAddr_UpdateMotion)(rb);
+#else
+		(void)rb;
+#endif
+	}
+
 	// Impulsion J (unites Havok) au point p (monde, unites Havok) sur un corps dynamique : vitesse lineaire J/m,
 	// vitesse angulaire I^-1 (r x J), avec I^-1 diagonale dans le repere du corps.
 	bool ApplyImpulse(UInt8* rb, V3 J, V3 p)
@@ -444,8 +476,7 @@ namespace
 		float* av = &At<float>(rb, hk::kAngVelocity);
 		lv[0] += dv.x; lv[1] += dv.y; lv[2] += dv.z;
 		av[0] += dw.x; av[1] += dw.y; av[2] += dw.z;
-		using Fn = void(__thiscall*)(void*);
-		((Fn)hk::kAddr_UpdateMotion)(rb);
+		Wake(rb);
 		return true;
 	}
 
@@ -606,7 +637,17 @@ namespace
 		bool limp;        // s'effondre net, sans muscles (option tir a la tete)
 		bool headWound;   // touche a la tete : la tete ballotte pendant l'agonie
 		float upTime;     // duree de l'agonie debout, secondes (raccourcie par chaque balle encaissee)
+		UInt32 attackerID; // celui qui l'a tue : il le regarde en titubant
+		char hitLeg, hitArm; // membre touche par le coup fatal : 0 aucun, 1 gauche, 2 droit
 	};
+
+	// cote et type d'un os humain, d'apres son nom (« Bip01 L Thigh »...)
+	int SideOf(const char* nm) { return strstr(nm, " L ") ? 0 : strstr(nm, " R ") ? 1 : -1; }
+	bool IsLegBone(const char* nm) { return strstr(nm, "Thigh") || strstr(nm, "Calf") || strstr(nm, "Foot"); }
+	bool IsArmBone(const char* nm)
+	{
+		return strstr(nm, "Clavicle") || strstr(nm, "Arm") || strstr(nm, "arm") || strstr(nm, "Hand"); // UpperArm, Forearm
+	}
 
 	// direction aleatoire, unitaire
 	V3 RandomDir()
@@ -684,6 +725,23 @@ namespace
 		bool hasPose;
 		int poseCount;
 		M3 pose[kMaxBodies];
+		// equilibre des humains : mesures prises debout, au debut de l'agonie (h0 = 0 : pas de modele de jambes)
+		float h0;          // hauteur du bassin au-dessus des pieds
+		float groundZ;     // hauteur du sol sous ses pieds
+		float stanceWidth; // ecart entre ses pieds
+		V3 headFwd;        // « devant » dans le repere de la tete
+		float legPower[2]; // force de chaque jambe (1 ; fWoundedLimb si elle est touchee)
+		float armPower[2];
+		DWORD flinchUntil; // une balle vient de toucher le tronc : le dos se plie un instant
+		DWORD lastStepEnd;
+		V3 stepStart;
+		float stepDur;     // duree du pas en cours, secondes
+		int steps;         // nombre de pas faits (journal)
+		float airTime;     // temps passe sans pied pose
+		float fallTime;    // duree de la chute (ecourtee quand il est au sol)
+		bool fell;         // la chute a commence (sens de chute mesure)
+		float imbalance;   // 0 = stable, 1 = en train de partir
+		V3 errDir;         // de quel cote il part (horizontal, unitaire)
 	};
 	constexpr int kMaxMuscles = 8;
 	SInt32 KnockedState(void* actorRef); // plus bas
@@ -691,8 +749,10 @@ namespace
 
 	void ClearMuscles() { memset(g_muscles, 0, sizeof(g_muscles)); }
 
-	// Photographie la pose du corps (celle que l'animation lui donnait au moment ou le ragdoll de mort demarre)
-	void CapturePose(MuscleTask& m)
+	// Photographie la pose du corps (celle que l'animation lui donnait au moment ou le ragdoll de mort demarre),
+	// et pour un humain debout les mesures de son equilibre. Renvoie false s'il n'est pas debout (assis, couche,
+	// deja a terre) : pas d'agonie debout.
+	bool CapturePose(MuscleTask& m)
 	{
 		Body b[kMaxBodies];
 		int n = CollectBodies(m.ref, b);
@@ -700,6 +760,27 @@ namespace
 			m.pose[k] = b[k].parent >= 0 ? Mul(Tr(RotOf(b[b[k].parent].rb)), RotOf(b[k].rb)) : RotOf(b[k].rb);
 		m.poseCount = n;
 		m.hasPose = n > 1;
+		m.h0 = 0.f;
+		if (!IsHumanoid(b, n)) return m.hasPose; // creature : modele simple, sans pas
+
+		int pelvis = FindBody(b, n, "Bip01 Pelvis"), chest = ChestOf(b, n), head = FindBody(b, n, "Bip01 Head");
+		int fl = FindBody(b, n, "Bip01 L Foot"), fr = FindBody(b, n, "Bip01 R Foot"), cl = FindBody(b, n, "Bip01 L Calf");
+		if (pelvis < 0 || chest < 0 || fl < 0 || fr < 0 || cl < 0) return false;
+		V3 pl = BodyCenter(b[pelvis].rb), a = BodyCenter(b[fl].rb), c = BodyCenter(b[fr].rb), kn = BodyCenter(b[cl].rb);
+		float low = a.z < c.z ? a.z : c.z;
+		float h = pl.z - low;
+		float leg = Len(pl - kn) + Len(kn - a); // longueur de jambe approchee (bassin -> mollet -> pied)
+		V3 spine = Norm(BodyCenter(b[chest].rb) - pl);
+		// debout : bassin a hauteur de jambe au-dessus des pieds, dos a moins de 40 degres de la verticale
+		if (leg <= 0.f || h < 0.75f * leg || spine.z < 0.76f) return false;
+		m.h0 = h;
+		m.groundZ = low;
+		V3 d = a - c;
+		d.z = 0.f;
+		m.stanceWidth = Len(d);
+		float heading = At<float>(m.ref, refr::kRot + 8);
+		if (head >= 0) m.headFwd = ToLocal(b[head].rb, V3{sinf(heading), cosf(heading), 0.f});
+		return true;
 	}
 
 	void StartMuscles(void* target, bool dying, V3 fallDir, const DeathStyle* death)
@@ -734,7 +815,19 @@ namespace
 		*slot = {RefID(target), target, GetTickCount(), GetTickCount(), duration, dying, Norm(fallDir), 0.f, ds};
 		slot->stepFoot = -1;
 		slot->hasPose = false;
-		if (dying && ds.balance) CapturePose(*slot);
+		slot->fallTime = g_cfg.muscleDeathTime;
+		for (int s = 0; s < 2; ++s)
+		{
+			slot->legPower[s] = ds.hitLeg == s + 1 ? g_cfg.woundedLimb : 1.f;
+			slot->armPower[s] = ds.hitArm == s + 1 ? g_cfg.woundedLimb : 1.f;
+		}
+		if (dying && ds.balance && !CapturePose(*slot))
+		{
+			// pas debout au moment de mourir (assis, couche, deja a terre) : il tombe sans agonie debout
+			slot->duration -= slot->death.upTime;
+			slot->death.upTime = 0.f;
+			slot->death.balance = ds.balance = false;
+		}
 		if (g_cfg.verbose)
 			Log("Muscles de %08X : debut (%s%s%s%s%s%s%s%s), %.1f s", slot->refID, dying ? "mort" : "chute",
 				ds.balance ? ", agonie debout" : "", ds.writhe ? ", se tord au sol" : "",
@@ -742,14 +835,19 @@ namespace
 				ds.element ? ", " : "", ElementName(ds.element), ds.explosion ? ", projete" : "", duration);
 	}
 
-	// Une balle encaissee pendant l'agonie debout : il lui reste moins de forces (fHitWeaken de son temps restant).
+	// Une balle encaissee pendant l'agonie debout, sur l'os i au point p (reaction « shot » d'Euphoria) :
+	// - il lui reste moins de forces (fHitWeaken de son temps restant) ;
+	// - une jambe touchee ne le porte presque plus (il flanche de ce cote), un bras touche pend ;
+	// - une balle dans le tronc lui plie le dos un instant ;
+	// - sa main va vers la nouvelle blessure.
 	// Renvoie true si le PNJ etait en train de mourir (agonie en cours).
-	bool WeakenDying(void* target)
+	bool AgonyHit(void* target, const Body* b, int n, int i, V3 p)
 	{
 		for (MuscleTask& m : g_muscles)
 		{
 			if (m.refID != RefID(target) || !m.dying) continue;
-			float age = (GetTickCount() - m.start) / 1000.f;
+			DWORD now = GetTickCount();
+			float age = (now - m.start) / 1000.f;
 			if (m.death.balance && age < m.death.upTime)
 			{
 				float left = (m.death.upTime - age) * (1.f - g_cfg.hitVitalityLoss);
@@ -757,11 +855,51 @@ namespace
 				float cut = m.death.upTime - (age + left);
 				m.death.upTime -= cut;
 				m.duration -= cut;
-				if (g_cfg.verbose) Log("Agonie de %08X : balle encaissee, encore %.1f s debout", m.refID, left);
+
+				const char* nm = b[i].name ? b[i].name : "";
+				int side = SideOf(nm);
+				const char* what = "tronc : il se plie";
+				if (side >= 0 && IsLegBone(nm)) { m.legPower[side] *= g_cfg.woundedLimb; what = "jambe : elle flanche"; }
+				else if (side >= 0 && IsArmBone(nm)) { m.armPower[side] *= g_cfg.woundedLimb; what = "bras : il pend"; }
+				else m.flinchUntil = now + (DWORD)(g_cfg.flinchTime * 1000.f);
+
+				if (g_cfg.grab && IsHumanoid(b, n) && (m.death.grab || Chance(g_cfg.grabChance)))
+				{
+					int hand = (side >= 0 && IsArmBone(nm)) ? 1 - side : m.death.grab ? m.death.grabHand : (rand() & 1);
+					if (m.armPower[hand] < 0.5f && m.armPower[1 - hand] >= 0.5f) hand = 1 - hand; // la main valide
+					m.death.grab = true;
+					m.death.grabHand = hand;
+					snprintf(m.death.wound, sizeof(m.death.wound), "%s", nm);
+					m.death.woundLocal = ToLocal(b[i].rb, p - BodyCenter(b[i].rb));
+				}
+				if (g_cfg.verbose)
+					Log("Agonie de %08X : balle encaissee (%s, %s), encore %.1f s de forces", m.refID, nm, what, left);
 			}
 			return true;
 		}
 		return false;
+	}
+
+	// distance horizontale du point p au segment [a, b] ; `closest` = le point du segment le plus proche (z de a)
+	float DistToSegmentXY(V3 p, V3 a, V3 b, V3& closest)
+	{
+		V3 ab = {b.x - a.x, b.y - a.y, 0.f}, ap = {p.x - a.x, p.y - a.y, 0.f};
+		float l2 = Dot(ab, ab);
+		float t = l2 > 1e-8f ? Dot(ap, ab) / l2 : 0.f;
+		t = t < 0.f ? 0.f : t > 1.f ? 1.f : t;
+		closest = {a.x + ab.x * t, a.y + ab.y * t, a.z};
+		V3 d = {p.x - closest.x, p.y - closest.y, 0.f};
+		return Len(d);
+	}
+
+	// rotation (axe x angle, radians) qui amene la direction a sur la direction b, limitee a maxAngle
+	V3 TurnTo(V3 a, V3 b, float maxAngle)
+	{
+		V3 axis = Cross(a, b);
+		float s = Len(axis);
+		if (s < 1e-5f) return {0.f, 0.f, 0.f};
+		float angle = atan2f(s, Dot(a, b));
+		return axis * ((angle > maxAngle ? maxAngle : angle) / s);
 	}
 
 	// inverse d'inertie moyenne (scalaire) : suffisant pour repartir un effort entre deux os
@@ -778,7 +916,10 @@ namespace
 		UInt8* c = b[chest].rb;
 		V3 e = target - BodyCenter(h);
 		V3 vrel = Load3(h, hk::kLinVelocity) - Load3(c, hk::kLinVelocity);
-		V3 dv = (e * kp - vrel * kd) * (dt * strength);
+		// pas de calcul trop long (jeu qui rame) : le ressort ne doit pas depasser sa cible ni inverser la vitesse
+		float kpdt = kp * dt * dt > 1.f ? 1.f / dt : kp * dt;
+		float kddt = kd * dt > 1.f ? 1.f : kd * dt;
+		V3 dv = (e * kpdt - vrel * kddt) * strength;
 		float l = Len(dv);
 		if (l > maxDv) dv = dv * (maxDv / l);
 		float imh = At<float>(h, hk::kInvMass), imc = At<float>(c, hk::kInvMass);
@@ -791,6 +932,235 @@ namespace
 	void PullHand(const Body* b, int hand, int chest, V3 target, float strength, float dt)
 	{
 		PullBody(b, hand, chest, target, g_cfg.armPull, g_cfg.armDamping, g_cfg.armMaxDv, strength, dt);
+	}
+
+	// Muscle d'une articulation : ramene l'os ck vers la rotation `pose` par rapport a son parent cp (ressort amorti
+	// kp, kd), plus une rotation voulue en plus (`extra`, axe x angle, monde). L'effort est partage entre les deux os
+	// selon leur inertie : la rotation relative change de dw, rien ne tourne « tout seul ».
+	void JointMuscle(UInt8* ck, UInt8* cp, const M3& pose, V3 extra, float kp, float kd, float maxDw, float dt)
+	{
+		float ik = InvInertia(ck), ip = InvInertia(cp);
+		if (ik + ip <= 0.f) return;
+		M3 want = Mul(RotOf(cp), pose);                               // ou l'os devrait etre (monde)
+		V3 e = RotVec(Mul(want, Tr(RotOf(ck)))) + extra;              // rotation qui l'y amene
+		V3 wrel = Load3(ck, hk::kAngVelocity) - Load3(cp, hk::kAngVelocity);
+		float kpdt = kp * dt * dt > 1.f ? 1.f / dt : kp * dt;
+		float kddt = kd * dt > 1.f ? 1.f : kd * dt;
+		V3 dw = e * kpdt - wrel * kddt;
+		float l = Len(dw);
+		if (l > maxDw) dw = dw * (maxDw / l);
+		V3 T = dw * (1.f / (ik + ip));
+		AddAngVel(ck, T * ik);
+		AddAngVel(cp, T * -ip);
+	}
+
+	bool Dyn(const Body* b, int k) { return k >= 0 && hk::IsDynamic(At<UInt8>(b[k].rb, hk::kMotionType)); }
+	float Clamp(float v, float lo, float hi) { return v < lo ? lo : v > hi ? hi : v; }
+
+	// Equilibre d'un humain mourant, facon Euphoria. Renvoie false quand il a perdu l'equilibre (`why` dit pourquoi).
+	//
+	// Unites : longueurs en h0 (hauteur du bassin debout), temps en T0 = racine(h0 / g), le temps de chute naturel du
+	// corps ; les reglages sont donc sans unite et valent quelle que soit l'echelle du moteur physique.
+	//
+	// 1. Ses jambes le portent : un ressort entre ses pieds d'appui et son bassin pousse le haut du corps vers le haut
+	//    et, avec la meme force, ses jambes d'appui contre le sol (action = reaction). Sans pied pose, rien ne le
+	//    porte ; une jambe touchee porte peu ; quand ses forces s'en vont le ressort faiblit et vise plus bas : ses
+	//    genoux plient, puis il ne tient plus.
+	// 2. Il se retient : le haut du corps est rappele au-dessus de ses appuis, en poussant ses pieds dans l'autre sens,
+	//    mais pas plus fort que ses pieds n'accrochent (fGrip). Une balle plus forte que ca le fait partir.
+	// 3. Il fait des pas : le point de capture (centre de masse + vitesse x T0 : la ou il doit poser le pied pour
+	//    s'arreter, formule du pendule inverse) sort de la zone de ses appuis -> le pied le plus loin se leve et va
+	//    s'y poser.
+	// 4. Son tronc est ramene vers la verticale, penche vers ou il part, tant que ses jambes le portent.
+	// 5. Il a perdu quand il penche trop, que ses jambes ont plie, qu'il n'a plus d'appui ou qu'il part trop vite.
+	bool BalanceHumanoid(MuscleTask& m, const Body* b, int n, int chest, int pelvis, float age, float dt, float vital,
+		DWORD now, bool* touched, const char*& why)
+	{
+		static const char* kFoot[2] = {"Bip01 L Foot", "Bip01 R Foot"};
+		static const char* kCalf[2] = {"Bip01 L Calf", "Bip01 R Calf"};
+		int foot[2], calf[2];
+		bool lower[kMaxBodies] = {};
+		for (int s = 0; s < 2; ++s)
+		{
+			foot[s] = FindBody(b, n, kFoot[s]);
+			calf[s] = FindBody(b, n, kCalf[s]);
+			if (!Dyn(b, foot[s]) || !Dyn(b, calf[s])) { why = "jambe sans physique"; return false; }
+			lower[foot[s]] = lower[calf[s]] = true;
+		}
+		if (!Dyn(b, pelvis) || pelvis == chest) { why = "bassin sans physique"; return false; }
+
+		const float g = Len(GravityOf(b[chest].rb));
+		const float h0 = m.h0;
+		const float T0 = sqrtf(h0 / g);
+		const V3 up = {0.f, 0.f, 1.f};
+
+		// centre de masse et vitesse du corps entier ; masse du haut du corps (tout sauf mollets et pieds)
+		float M = 0.f, Mup = 0.f;
+		V3 com = {0, 0, 0}, comV = {0, 0, 0};
+		for (int k = 0; k < n; ++k)
+		{
+			if (!Dyn(b, k)) continue;
+			float mk = MassOf(b[k].rb);
+			com = com + BodyCenter(b[k].rb) * mk;
+			comV = comV + Load3(b[k].rb, hk::kLinVelocity) * mk;
+			M += mk;
+			if (!lower[k]) Mup += mk;
+		}
+		if (M <= 0.f || Mup <= 0.f) { why = "masse nulle"; return false; }
+		com = com * (1.f / M);
+		comV = comV * (1.f / M);
+
+		// pieds d'appui : ceux qui ne font pas de pas et sont poses (sous le bassin, sans vitesse verticale)
+		V3 fp[2] = {BodyCenter(b[foot[0]].rb), BodyCenter(b[foot[1]].rb)};
+		V3 pel = BodyCenter(b[pelvis].rb);
+		bool grounded[2];
+		int ng = 0;
+		float base = 0.f, powerSum = 0.f;
+		V3 mid = {0, 0, 0};
+		for (int s = 0; s < 2; ++s)
+		{
+			float vz = Load3(b[foot[s]].rb, hk::kLinVelocity).z;
+			grounded[s] = s != m.stepFoot && pel.z - fp[s].z > 0.3f * h0 && fabsf(vz) < 0.8f * h0 / T0;
+			if (!grounded[s]) continue;
+			++ng;
+			base += fp[s].z;
+			mid = mid + fp[s];
+			powerSum += m.legPower[s];
+		}
+		float power = 0.f, h = h0;
+		if (ng)
+		{
+			base /= ng;
+			mid = mid * (1.f / ng);
+			power = powerSum / ng * vital;
+			h = pel.z - base;
+			m.groundZ += (base - m.groundZ) * Clamp(dt * 5.f, 0.f, 1.f);
+			m.airTime = 0.f;
+		}
+		else m.airTime += dt;
+
+		// force (acceleration a, monde) sur tout le haut du corps, et la meme force en sens inverse sur les jambes d'appui
+		auto pushOffLegs = [&](V3 a)
+		{
+			V3 dv = a * dt;
+			for (int k = 0; k < n; ++k)
+			{
+				if (lower[k] || !Dyn(b, k)) continue;
+				AddLinVel(b[k].rb, dv);
+				touched[k] = true;
+			}
+			float cap = 10.f * g * dt; // une jambe en l'air ne part pas comme une balle : au plus 10 g
+			for (int s = 0; s < 2; ++s)
+			{
+				if (!grounded[s]) continue;
+				float share = powerSum > 0.f ? m.legPower[s] / powerSum : 1.f / ng;
+				float ml = MassOf(b[calf[s]].rb) + MassOf(b[foot[s]].rb);
+				if (ml <= 0.f) continue;
+				V3 r = dv * (-Mup * share / ml);
+				float l = Len(r);
+				if (l > cap) r = r * (cap / l);
+				AddLinVel(b[calf[s]].rb, r);
+				AddLinVel(b[foot[s]].rb, r);
+				touched[calf[s]] = touched[foot[s]] = true;
+			}
+		};
+
+		if (ng)
+		{
+			// 1. les jambes portent : poids + ressort vers la hauteur voulue (plus basse quand ses forces s'en vont)
+			float hd = h0 * (1.f - g_cfg.sag * (1.f - vital));
+			float vz = Load3(b[pelvis].rb, hk::kLinVelocity).z;
+			float kp = Clamp(g_cfg.legStiffness / (T0 * T0), 0.f, 0.5f / (dt * dt));
+			float kd = Clamp(g_cfg.legDamping / T0, 0.f, 0.8f / dt);
+			float az = Clamp(g + kp * (hd - h) - kd * vz, 0.f, g_cfg.legMaxForce * g) * power;
+
+			// 2. il se retient au-dessus de ses appuis, dans la limite de l'adherence de ses pieds
+			V3 e = {mid.x - com.x, mid.y - com.y, 0.f};
+			V3 ah = e * Clamp(g_cfg.holdGain / (T0 * T0), 0.f, 0.5f / (dt * dt))
+				- V3{comV.x, comV.y, 0.f} * Clamp(g_cfg.holdDamping / T0, 0.f, 0.8f / dt);
+			float lim = g_cfg.friction * g * power, la = Len(ah);
+			if (la > lim) ah = ah * (lim / la);
+			pushOffLegs(V3{ah.x, ah.y, az});
+		}
+
+		// 3. point de capture et pas
+		float lead = g_cfg.stepLead * T0;
+		V3 cp = {com.x + comV.x * lead, com.y + comV.y * lead, 0.f};
+		float zone = g_cfg.stepZone * h0;
+		if (m.stepFoot >= 0 && now >= m.stepEnd) { m.stepFoot = -1; m.lastStepEnd = now; }
+		V3 closest;
+		float d = m.stepFoot >= 0 ? DistToSegmentXY(cp, fp[1 - m.stepFoot], fp[1 - m.stepFoot], closest)
+			: DistToSegmentXY(cp, fp[0], fp[1], closest);
+		V3 ed = {cp.x - closest.x, cp.y - closest.y, 0.f};
+		if (Len(ed) > 1e-4f) m.errDir = Norm(ed);
+		m.imbalance = Clamp((d - zone) / (0.5f * h0), 0.f, 1.f);
+
+		if (m.stepFoot < 0 && d > zone && vital > 0.15f && now - m.lastStepEnd > 60)
+		{
+			V3 d0 = {cp.x - fp[0].x, cp.y - fp[0].y, 0.f}, d1 = {cp.x - fp[1].x, cp.y - fp[1].y, 0.f};
+			int f = Len(d0) > Len(d1) ? 0 : 1; // le pied le plus loin de la ou il part fait le pas
+			if (grounded[1 - f])
+			{
+				V3 other = fp[1 - f];
+				// cible : le point de capture, un peu au-dela, en gardant ce pied de son cote
+				V3 lat = fp[f] - other;
+				lat.z = 0.f;
+				lat = lat - m.errDir * Dot(lat, m.errDir);
+				float half = m.stanceWidth * 0.5f;
+				lat = Len(lat) > 1e-3f ? Norm(lat) * half : Cross(m.errDir, up) * (f ? -half : half);
+				V3 t = cp + m.errDir * (zone * 0.5f) + lat;
+				V3 reach = {t.x - other.x, t.y - other.y, 0.f};
+				float maxStep = 0.9f * h0; // pas plus long que la jambe
+				if (Len(reach) > maxStep) reach = Norm(reach) * maxStep;
+				m.stepTarget = {other.x + reach.x, other.y + reach.y, other.z};
+				m.stepStart = fp[f];
+				m.stepFoot = f;
+				m.stepDur = Clamp(g_cfg.stepTime * T0, 0.05f, 2.f);
+				m.stepEnd = now + (DWORD)(m.stepDur * 1000.f);
+				++m.steps;
+			}
+		}
+		if (m.stepFoot >= 0)
+		{
+			int f = m.stepFoot;
+			float phase = Clamp(1.f - (float)(m.stepEnd - now) / (m.stepDur * 1000.f), 0.f, 1.f);
+			float ease = phase * phase * (3.f - 2.f * phase);
+			V3 want = m.stepStart + (m.stepTarget - m.stepStart) * ease;
+			want.z += g_cfg.stepLift * h0 * sinf(3.14159f * phase); // le pied se leve puis se pose
+			float w = 6.f / m.stepDur;                              // le pied suit sa trajectoire en une fraction du pas
+			PullBody(b, foot[f], pelvis, want, w * w, 2.f * w, 2.f * h0 / m.stepDur, Clamp(m.legPower[f] * vital, 0.3f, 1.f), dt);
+			touched[foot[f]] = touched[pelvis] = true;
+		}
+
+		// 4. tronc ramene vers la verticale, penche vers ou il part, avec un leger balancement
+		V3 spine = Norm(BodyCenter(b[chest].rb) - pel);
+		if (power > 0.f)
+		{
+			V3 hv = {comV.x, comV.y, 0.f};
+			float speed = Len(hv), vref = h0 / T0;
+			V3 leanDir = speed > 0.02f * vref ? hv * (1.f / speed) : m.fallDir;
+			float lean = Clamp(0.5f * speed / vref, 0.f, 0.5f);
+			V3 side = Norm(Cross(leanDir, up));
+			V3 want = Norm(up + leanDir * lean + side * (g_cfg.sway * sinf(age * 4.8f))
+				+ m.fallDir * (g_cfg.sway * 0.5f * sinf(age * 3.1f)));
+			V3 turn = TurnTo(spine, want, 3.14159f);
+			V3 wWant = turn * (g_cfg.uprightGain / T0);
+			V3 wNow = (Load3(b[chest].rb, hk::kAngVelocity) + Load3(b[pelvis].rb, hk::kAngVelocity)) * 0.5f;
+			V3 dw = (wWant - wNow) * (Clamp(dt * 3.f / T0, 0.f, 1.f) * Clamp(power, 0.f, 1.f));
+			AddAngVel(b[chest].rb, dw);
+			AddAngVel(b[pelvis].rb, dw);
+			touched[chest] = touched[pelvis] = true;
+		}
+
+		// 5. a-t-il perdu l'equilibre ? (pas pendant les premiers instants : le ragdoll se pose)
+		if (age > 0.15f)
+		{
+			if (spine.z < cosf(g_cfg.maxTilt * 3.14159f / 180.f)) { why = "il penche trop"; return false; }
+			if (ng && h < g_cfg.minHeight * h0) { why = "ses jambes ont plie"; return false; }
+			if (m.airTime > 1.2f * T0) { why = "plus d'appui"; return false; }
+			if (d > 1.6f * h0) { why = "il part trop vite"; return false; }
+		}
+		return true;
 	}
 
 	// Renvoie false quand la tache est finie
@@ -816,7 +1186,32 @@ namespace
 		// chute ou les muscles lachent, puis au sol (writhe) avec une force faible qui s'eteint.
 		float t = age / m.duration;
 		float standT = m.dying ? m.death.upTime : 0.f;
-		float fallEnd = standT + g_cfg.muscleDeathTime;
+		bool legs = m.dying && m.h0 > 0.f && humanoid; // humain mort debout : modele de jambes, chute mesuree
+
+		// debut de la chute : il tombe du cote ou il part vraiment (vitesse, sinon inclinaison du dos)
+		if (legs && age >= standT && !m.fell)
+		{
+			m.fell = true;
+			V3 v = Load3(b[chest].rb, hk::kLinVelocity);
+			v.z = 0.f;
+			V3 lean = pelvis >= 0 ? BodyCenter(b[chest].rb) - BodyCenter(b[pelvis].rb) : V3{0, 0, 0};
+			lean.z = 0.f;
+			float T0 = sqrtf(m.h0 / Len(GravityOf(b[chest].rb)));
+			if (Len(v) > 0.15f * m.h0 / T0) m.fallDir = Norm(v);
+			else if (Len(lean) > 0.05f * m.h0) m.fallDir = Norm(lean);
+		}
+		// il est au sol (poitrine basse et presque immobile) : la chute est finie, il peut se tordre
+		if (legs && m.fell && age - standT > 0.25f && age - standT < m.fallTime)
+		{
+			float T0 = sqrtf(m.h0 / Len(GravityOf(b[chest].rb)));
+			if (BodyCenter(b[chest].rb).z - m.groundZ < 0.4f * m.h0
+				&& Len(Load3(b[chest].rb, hk::kLinVelocity)) < 0.4f * m.h0 / T0)
+			{
+				m.fallTime = age - standT;
+				m.duration = age + (m.death.writhe ? g_cfg.writheTime : 0.f);
+			}
+		}
+		float fallEnd = standT + m.fallTime;
 		bool writhing = m.dying && m.death.writhe && age >= fallEnd;
 		float strength;
 		if (!m.dying) strength = t < 0.6f ? 1.f : (1.f - t) / 0.4f;
@@ -908,112 +1303,59 @@ namespace
 			}
 		}
 
-		// 0. Agonie debout, facon Euphoria. Le mourant essaie de tenir debout :
-		//    - le haut du corps est soulage de son poids (fSupport), pleinement pendant 70 % de l'agonie puis de moins
-		//      en moins : a la fin ses jambes cedent ;
-		//    - le torse est tenu droit (axe bassin -> poitrine), penche vers ou il part et oscille un peu ;
-		//    - equilibre : on calcule ou il va (centre de masse + vitesse x fStepLead, le « point de capture ») ; s'il
-		//      s'eloigne de ses pieds, un pied se leve et va se poser la-bas : il fait des pas pour se rattraper. Une balle
-		//      qui le pousse, ou l'elan de sa course, le font donc tituber de lui-meme, dans le bon sens ;
-		//    - ses bras s'ecartent pour garder l'equilibre (sauf la main sur la plaie).
+		// 0. Agonie debout, facon Euphoria : il essaie de tenir debout.
+		//    Humain : modele de jambes, retenue, pas, perte d'equilibre (BalanceHumanoid).
+		//    Creature : modele simple (le haut du corps est soulage de son poids et tenu droit).
 		bool upright = age < standT;
 		float vital = 0.f; // forces qui restent pendant l'agonie : 1 pendant 70 % du temps, puis jusqu'a 0
 		if (upright)
 		{
 			float hold = standT * 0.7f;
 			vital = age < hold ? 1.f : 1.f - (age - hold) / (standT - hold);
+		}
+		if (upright && legs)
+		{
+			const char* why = "";
+			if (!BalanceHumanoid(m, b, n, chest, pelvis, age, dt, vital, now, touched, why))
+			{
+				// il a perdu l'equilibre : la chute commence maintenant, pas a heure fixe
+				m.duration -= m.death.upTime - age;
+				m.death.upTime = age;
+				m.stepFoot = -1;
+				if (g_cfg.verbose)
+					Log("Agonie de %08X : tombe apres %.1f s et %d pas (%s)", m.refID, age, m.steps, why);
+			}
+		}
+		else if (upright)
+		{
 			float support = g_cfg.balanceSupport * vital;
 			V3 g = GravityOf(b[chest].rb);
 			int ends[16];
-			int ne = humanoid ? 0 : LimbEnds(b, n, chest, ends, 16);
-			float mass = 0.f;
-			V3 com = {0, 0, 0}, comV = {0, 0, 0};
+			int ne = LimbEnds(b, n, chest, ends, 16);
 			for (int k = 0; k < n; ++k)
 			{
-				if (!hk::IsDynamic(At<UInt8>(b[k].rb, hk::kMotionType))) continue;
-				bool lowerLeg = false;
-				if (humanoid) lowerLeg = b[k].name && (strstr(b[k].name, "Calf") || strstr(b[k].name, "Foot"));
-				else for (int j = 0; j < ne; ++j) lowerLeg |= ends[j] == k;
-				if (lowerLeg) continue;
+				if (!Dyn(b, k)) continue;
+				bool end = false;
+				for (int j = 0; j < ne; ++j) end |= ends[j] == k;
+				if (end) continue; // les bouts des membres (pattes) ne sont pas portes : ils restent au sol
 				AddLinVel(b[k].rb, g * (-support * dt));
 				touched[k] = true;
-				float mk = MassOf(b[k].rb);
-				com = com + BodyCenter(b[k].rb) * mk;
-				comV = comV + Load3(b[k].rb, hk::kLinVelocity) * mk;
-				mass += mk;
 			}
-			if (mass > 0.f) { com = com * (1.f / mass); comV = comV * (1.f / mass); }
-
-			bool hasPelvis = pelvis >= 0 && pelvis != chest && hk::IsDynamic(At<UInt8>(b[pelvis].rb, hk::kMotionType));
-			if (hasPelvis && mass > 0.f)
+			if (Dyn(b, pelvis) && pelvis != chest)
 			{
-				// torse tenu droit, penche vers ou il part, qui oscille
-				V3 hv = {comV.x, comV.y, 0.f};
-				float speed = Len(hv);
-				V3 leanDir = speed > 0.05f ? hv * (1.f / speed) : m.fallDir;
-				float lean = speed * 0.15f > 0.6f ? 0.6f : speed * 0.15f;
-				V3 side = Norm(Cross(leanDir, V3{0, 0, 1}));
-				V3 want = Norm(V3{0, 0, 1} + leanDir * lean + side * (g_cfg.sway * sinf(age * 4.8f))
-					+ m.fallDir * (g_cfg.sway * 0.5f * sinf(age * 3.1f)));
-				V3 spine = Norm(BodyCenter(b[chest].rb) - BodyCenter(b[pelvis].rb));
-				V3 axis = Cross(spine, want);
-				float s = Len(axis);
-				if (s > 1e-4f)
-				{
-					// le tronc entier (bassin et poitrine ensemble) est ramene vers la verticale voulue : c'est son
-					// equilibre ; les jambes, tenues par leurs muscles dans la pose, suivent le bassin
-					V3 wWant = axis * (asinf(s > 1.f ? 1.f : s) * g_cfg.uprightGain / s);
-					V3 wNow = (Load3(b[chest].rb, hk::kAngVelocity) + Load3(b[pelvis].rb, hk::kAngVelocity)) * 0.5f;
-					float k = dt * 10.f > 1.f ? 1.f : dt * 10.f;
-					V3 dw = (wWant - wNow) * (k * vital);
-					AddAngVel(b[chest].rb, dw);
-					AddAngVel(b[pelvis].rb, dw);
-				}
-
-				// il ne glisse pas comme sur de la glace : sa vitesse horizontale s'use (ses pieds freinent)
-				float brake = dt * g_cfg.balanceDamping > 1.f ? 1.f : dt * g_cfg.balanceDamping;
+				// un quadrupede a le dos a plat : on freine la rotation de son tronc (il garde l'inclinaison qu'il
+				// avait), on ne le redresse pas vers la verticale
+				V3 wNow = (Load3(b[chest].rb, hk::kAngVelocity) + Load3(b[pelvis].rb, hk::kAngVelocity)) * 0.5f;
+				V3 dw = wNow * (-Clamp(dt * 10.f, 0.f, 1.f) * vital);
+				AddAngVel(b[chest].rb, dw);
+				AddAngVel(b[pelvis].rb, dw);
+				float brake = Clamp(dt * 1.5f, 0.f, 1.f);
 				for (int part : {chest, pelvis})
 				{
 					V3 v = Load3(b[part].rb, hk::kLinVelocity);
 					AddLinVel(b[part].rb, V3{-v.x, -v.y, 0.f} * brake);
 				}
 				touched[chest] = touched[pelvis] = true;
-
-				// les pas : un pied a la fois va se poser sous le point de capture
-				int feet[2] = {humanoid ? FindBody(b, n, "Bip01 L Foot") : -1, humanoid ? FindBody(b, n, "Bip01 R Foot") : -1};
-				if (feet[0] >= 0 && feet[1] >= 0 && hk::IsDynamic(At<UInt8>(b[feet[0]].rb, hk::kMotionType))
-					&& hk::IsDynamic(At<UInt8>(b[feet[1]].rb, hk::kMotionType)))
-				{
-					V3 fp[2] = {BodyCenter(b[feet[0]].rb), BodyCenter(b[feet[1]].rb)};
-					V3 mid = (fp[0] + fp[1]) * 0.5f;
-					V3 cp = com + comV * g_cfg.stepLead;
-					V3 err = {cp.x - mid.x, cp.y - mid.y, 0.f};
-					float legLen = Len(BodyCenter(b[pelvis].rb) - mid);
-					if (m.stepFoot >= 0 && now >= m.stepEnd) m.stepFoot = -1;
-					if (m.stepFoot < 0 && Len(err) > legLen * 0.12f)
-					{
-						// le pied le plus loin du point de capture fait le pas ; l'ecart entre les pieds est garde
-						V3 d0 = {cp.x - fp[0].x, cp.y - fp[0].y, 0.f}, d1 = {cp.x - fp[1].x, cp.y - fp[1].y, 0.f};
-						int f = Len(d0) > Len(d1) ? 0 : 1;
-						V3 off = fp[f] - mid;
-						off.z = 0.f;
-						m.stepFoot = f;
-						m.stepEnd = now + (DWORD)(g_cfg.stepTime * 1000.f);
-						m.stepTarget = {cp.x + off.x, cp.y + off.y, fp[f].z};
-					}
-					if (m.stepFoot >= 0)
-					{
-						int k = feet[m.stepFoot];
-						float total = g_cfg.stepTime > 0.01f ? g_cfg.stepTime : 0.01f;
-						float phase = 1.f - (float)(m.stepEnd - now) / (total * 1000.f);
-						if (phase < 0.f) phase = 0.f;
-						if (phase > 1.f) phase = 1.f;
-						V3 target = m.stepTarget;
-						target.z += g_cfg.stepLift * sinf(3.14159f * phase); // le pied se leve puis se pose
-						PullBody(b, k, pelvis, target, g_cfg.stepPull, g_cfg.stepDamping, g_cfg.stepMaxDv, vital, dt);
-						touched[k] = true;
-					}
-				}
 			}
 		}
 
@@ -1057,46 +1399,65 @@ namespace
 		//    L'effort est partage entre les deux os selon leur inertie : rien ne tourne « tout seul ».
 		bool posing = m.hasPose && m.poseCount == n && !writhing && !flying && elem == kElem_None && g_cfg.pose;
 		float poseScale = upright ? 0.25f + 0.75f * vital : (m.dying ? g_cfg.fallPose * strength : 0.f);
+		// il regarde celui qui lui tire dessus (pas apres une balle dans la tete)
+		int headIdx = -1;
+		V3 lookDir = {0, 0, 0};
+		if (posing && upright && legs && g_cfg.headLook > 0.f && !m.death.headWound)
+		{
+			void* attacker = m.death.attackerID ? forms::LookupByID(m.death.attackerID) : nullptr;
+			int h = FindBody(b, n, "Bip01 Head");
+			if (attacker && IsActor(attacker) && attacker != m.ref && h >= 0)
+			{
+				V3 eyes = Load3(attacker, refr::kPos) * hk::kGameToHavok + V3{0.f, 0.f, 1.7f * m.h0};
+				lookDir = Norm(eyes - BodyCenter(b[h].rb));
+				if (Len(lookDir) > 0.5f) headIdx = h;
+			}
+		}
+		bool flinch = now < m.flinchUntil;
 		for (int k = 0; k < n; ++k)
 		{
 			int p = b[k].parent;
 			if (p < 0) continue;
 			UInt8* ck = b[k].rb;
 			UInt8* cp = b[p].rb;
-			if (!hk::IsDynamic(At<UInt8>(ck, hk::kMotionType)) || !hk::IsDynamic(At<UInt8>(cp, hk::kMotionType))) continue;
-			float ik = InvInertia(ck), ip = InvInertia(cp);
-			if (ik + ip <= 0.f) continue;
+			if (!Dyn(b, k) || !Dyn(b, p)) continue;
 			const char* nm = b[k].name ? b[k].name : "";
 			bool headPart = strstr(nm, "Head") || strstr(nm, "Neck");
-			V3 wrel = Load3(ck, hk::kAngVelocity) - Load3(cp, hk::kAngVelocity);
-			V3 dw;
 			if (posing && poseScale > 0.f)
 			{
-				bool leg = strstr(nm, "Thigh") || strstr(nm, "Calf") || strstr(nm, "Foot");
-				bool arm = strstr(nm, "Clavicle") || strstr(nm, "Arm") || strstr(nm, "Hand");
+				bool leg = IsLegBone(nm), arm = IsArmBone(nm);
+				int side = SideOf(nm);
 				float mul = leg ? g_cfg.legStrength : arm ? g_cfg.armStrength : headPart ? g_cfg.neckStrength : g_cfg.spineStrength;
-				if (headPart && m.death.headWound && upright) mul *= 0.1f;    // touche a la tete : elle ballotte
-				if (leg && upright) mul *= vital;                             // les jambes lachent en premier
-				if (leg && upright && m.stepFoot >= 0 && strstr(nm, m.stepFoot ? " R " : " L "))
-					mul *= g_cfg.stepLegRelax;                                // la jambe qui fait le pas se laisse porter
-				M3 want = Mul(RotOf(cp), m.pose[k]);                           // ou l'os devrait etre (monde)
-				V3 e = RotVec(Mul(want, Tr(RotOf(ck))));                       // rotation qui l'y amene
-				dw = (e * (g_cfg.poseStrength * mul * poseScale) - wrel * (g_cfg.poseDamping * poseScale)) * dt;
-				float l = Len(dw);
-				if (l > g_cfg.poseMaxDv) dw = dw * (g_cfg.poseMaxDv / l);
+				if (headPart && m.death.headWound && upright) mul *= 0.1f;     // touche a la tete : elle ballotte
+				if (leg && upright) mul *= vital;                              // les jambes lachent en premier
+				if (leg && side >= 0) mul *= m.legPower[side];                 // jambe touchee
+				if (arm && side >= 0) mul *= m.armPower[side];                 // bras touche : il pend
+				if (leg && upright && m.stepFoot >= 0 && side == m.stepFoot)
+					mul *= g_cfg.stepLegRelax;                                 // la jambe qui fait le pas se laisse porter
+				if (flinch && !leg && !arm && !headPart) mul *= 0.15f;         // une balle dans le tronc : le dos se plie
+				V3 extra = {0, 0, 0};
+				if (k == headIdx)
+				{
+					V3 fwd = MulV(Mul(RotOf(cp), m.pose[k]), m.headFwd);        // ou la tete regarde dans la pose
+					extra = TurnTo(fwd, lookDir, 1.0f) * g_cfg.headLook;        // au plus ~60 degres vers le tireur
+				}
+				JointMuscle(ck, cp, m.pose[k], extra, g_cfg.poseStrength * mul * poseScale, g_cfg.poseDamping * poseScale,
+					g_cfg.poseMaxDv, dt);
 			}
 			else
 			{
+				float ik = InvInertia(ck), ip = InvInertia(cp);
+				if (ik + ip <= 0.f) continue;
 				float damp = headPart ? ((m.death.headWound && upright) ? 0.03f : g_cfg.neckDamping) : g_cfg.jointDamping;
 				if (elem == kElem_Shock) damp *= 2.f; // muscles contractes par le courant
 				damp *= strength;
 				if (damp > 0.9f) damp = 0.9f;
 				damp = 1.f - powf(1.f - damp, dt * 60.f); // reglage donne pour 60 images/s, meme effet a tout framerate
-				dw = wrel * -damp;
+				V3 wrel = Load3(ck, hk::kAngVelocity) - Load3(cp, hk::kAngVelocity);
+				V3 T = wrel * (-damp / (ik + ip)); // impulsion angulaire qui retire damp de la rotation relative
+				AddAngVel(ck, T * ik);
+				AddAngVel(cp, T * -ip);
 			}
-			V3 T = dw * (1.f / (ik + ip)); // impulsion angulaire qui change la rotation relative de dw
-			AddAngVel(ck, T * ik);
-			AddAngVel(cp, T * -ip);
 			touched[k] = touched[p] = true;
 		}
 
@@ -1132,13 +1493,17 @@ namespace
 			}
 			else if (upright)
 			{
-				// agonie debout : le bras s'ecarte sur le cote pour l'equilibre, et bat un peu
+				// agonie debout : le bras s'ecarte pour l'equilibre. Plus il part (imbalance), plus les bras vont a
+				// l'oppose de sa chute et moulinent, l'un en opposition de l'autre (le « teeter » d'Euphoria)
 				V3 side = sh - chestPos;
 				side.z = 0.f;
 				side = Norm(side);
-				float wobble = sinf(age * 5.3f + s * 1.7f);
-				target = sh + side * (m.reach * 0.7f) + V3{0, 0, m.reach * (0.05f + 0.15f * wobble)};
-				pull *= g_cfg.balanceArms;
+				float imb = m.imbalance;
+				float ph = age * 9.f + s * 3.14159f;
+				target = sh + side * (m.reach * 0.6f)
+					+ m.errDir * (m.reach * imb * (0.3f * cosf(ph) - 0.45f))
+					+ V3{0, 0, m.reach * (0.05f + 0.1f * sinf(age * 5.3f + s * 1.7f) + 0.35f * imb * sinf(ph))};
+				pull *= g_cfg.balanceArms * (0.6f + 0.8f * imb);
 			}
 			else
 			{
@@ -1146,13 +1511,12 @@ namespace
 				side.z = 0.f;
 				target = sh + m.fallDir * (m.reach * 0.6f) + side * 0.3f + V3{0, 0, -m.reach * 0.5f};
 			}
-			PullHand(b, hand, chest, target, pull, dt);
+			PullHand(b, hand, chest, target, pull * (m.dying ? m.armPower[s] : 1.f), dt);
 			touched[hand] = touched[chest] = true;
 		}
 
-		using Fn = void(__thiscall*)(void*);
 		for (int k = 0; k < n; ++k)
-			if (touched[k]) ((Fn)hk::kAddr_UpdateMotion)(b[k].rb);
+			if (touched[k]) Wake(b[k].rb);
 		return true;
 	}
 
@@ -1196,13 +1560,12 @@ namespace
 	{
 		if (Len(v) < 1e-3f) return 0;
 		int done = 0;
-		using Fn = void(__thiscall*)(void*);
 		for (int k = 0; k < n; ++k)
 		{
 			if (!hk::IsDynamic(At<UInt8>(b[k].rb, hk::kMotionType))) continue;
 			float* lv = &At<float>(b[k].rb, hk::kLinVelocity);
 			lv[0] += v.x; lv[1] += v.y; lv[2] += v.z;
-			((Fn)hk::kAddr_UpdateMotion)(b[k].rb);
+			Wake(b[k].rb);
 			++done;
 		}
 		return done;
@@ -1496,7 +1859,7 @@ namespace
 		if (IsDead(target))
 		{
 			if (!st.deathTick) st.deathTick = GetTickCount();
-			agony = WeakenDying(target);
+			agony = AgonyHit(target, b, n, i, p);
 			corpse = agony || GetTickCount() - st.deathTick > 1000;
 		}
 		SInt32 knocked = KnockedState(target);
@@ -1536,6 +1899,10 @@ namespace
 			float total = dmg * pellets;
 			bool muscles = g_cfg.muscles && g_cfg.musclesOnDeath && !elem; // la facon de mourir passe par les muscles
 			ds.headWound = head;
+			ds.attackerID = RefID(attacker);
+			int woundSide = SideOf(bone);
+			if (woundSide >= 0 && IsLegBone(bone)) ds.hitLeg = (char)(woundSide + 1);
+			if (woundSide >= 0 && IsArmBone(bone)) ds.hitArm = (char)(woundSide + 1);
 			ds.limp = g_cfg.headshotLimp && head && !elem && !explosion;
 			if (muscles && !ds.limp)
 			{
@@ -1847,3 +2214,7 @@ extern "C"
 		return true;
 	}
 }
+
+#ifdef RR_TEST
+#include "tests.inl"
+#endif
