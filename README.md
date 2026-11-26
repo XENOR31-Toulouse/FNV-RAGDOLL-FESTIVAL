@@ -24,7 +24,7 @@ Le script produit `build\NVReactiveRagdoll.dll` (32 bits), le copie avec le .ini
 2. Lance le jeu, charge une partie près de PNJ.
 3. Vise un PNJ et appuie sur **F8** : la liste de ses corps physiques s'écrit dans le journal.
 4. Appuie sur **F7** : le PNJ visé reçoit une poussée au torse, puis ses corps sont listés à nouveau.
-5. Tire sur des PNJ : chaque coup ajoute une ligne au journal.
+5. Tire sur des PNJ : chaque coup ajoute une ligne au journal. Tue-en aussi quelques-uns : un coup fatal est marqué « FATAL », puis une ligne « Mort de … » dit si la poussée a été appliquée au ragdoll de mort, et après combien de millisecondes.
 6. Quitte le jeu et lis `NVReactiveRagdoll.log` dans le dossier du jeu (`E:\SteamLibrary\steamapps\common\Fallout New Vegas\`).
 
 Ce qu'il faut regarder dans le journal : la colonne « anime(keyframed) » ou « dynamique ». Le moteur ne peut pousser que des corps dynamiques. Si tous les corps d'un PNJ vivant restent « anime » même juste après un coup, c'est que le Ragdoll Feedback natif ne suffit pas, et on passe au plan B de la conception.

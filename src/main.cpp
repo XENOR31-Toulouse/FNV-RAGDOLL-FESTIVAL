@@ -61,6 +61,10 @@ namespace
 		float criticalMult = 1.3f;
 		float neighbourShare = 0.4f;
 		float up = 0.1f;
+		// [Death] coup fatal : poussee gardee jusqu'au passage en ragdoll de mort
+		bool deferFatal = true;
+		float fatalWait = 0.6f;
+		float fatalMult = 1.0f;
 		// [RagdollAnim] reglages natifs du jeu
 		bool forceFeedback = true;
 	} g_cfg;
@@ -90,6 +94,9 @@ namespace
 		c.criticalMult = IniFloat("Hits", "fCriticalMult", c.criticalMult);
 		c.neighbourShare = IniFloat("Hits", "fNeighbourShare", c.neighbourShare);
 		c.up = IniFloat("Hits", "fUp", c.up);
+		c.deferFatal = IniInt("Death", "bDeferFatalPush", 1) != 0;
+		c.fatalWait = IniFloat("Death", "fWaitTime", c.fatalWait);
+		c.fatalMult = IniFloat("Death", "fPushMult", c.fatalMult);
 		c.forceFeedback = IniInt("RagdollAnim", "bRagdollFeedback", 1) != 0;
 		g_cfg = c;
 		Log("Reglages lus : %s (%s)", g_iniPath,
@@ -311,6 +318,68 @@ namespace
 		Log("=== %d dynamiques / %d", dynamic, n);
 	}
 
+	// ------------------------------------------------------------------ coup fatal : poussee differee
+	// Au moment du coup fatal, le PNJ est souvent encore anime : le moteur ignorerait la poussee. On la garde, et
+	// on l'applique des que ses corps deviennent dynamiques (ragdoll de mort), au meme os et au meme point de l'os.
+	struct PendingPush
+	{
+		UInt32 refID;      // 0 = case libre
+		void* ref;         // compare a la table des formes avant chaque usage
+		char bone[32];
+		V3 J;              // impulsion, unites Havok
+		V3 offset;         // point d'impact - centre de l'os au moment du coup
+		DWORD start;       // GetTickCount
+	};
+	constexpr int kMaxPending = 16;
+	PendingPush g_pending[kMaxPending] = {};
+
+	void ClearPending() { memset(g_pending, 0, sizeof(g_pending)); }
+
+	void QueueFatalPush(void* target, const char* bone, V3 J, V3 offset)
+	{
+		PendingPush* slot = nullptr;
+		for (PendingPush& p : g_pending)
+		{
+			if (p.refID == RefID(target)) { slot = &p; break; } // nouveau coup fatal sur le meme PNJ : on remplace
+			if (!slot && !p.refID) slot = &p;
+		}
+		if (!slot) slot = &g_pending[0]; // file pleine : on ecrase la plus ancienne case
+		slot->refID = RefID(target);
+		slot->ref = target;
+		snprintf(slot->bone, sizeof(slot->bone), "%s", bone ? bone : "Bip01 Spine2");
+		slot->J = J;
+		slot->offset = offset;
+		slot->start = GetTickCount();
+	}
+
+	void ProcessPending()
+	{
+		DWORD now = GetTickCount();
+		for (PendingPush& p : g_pending)
+		{
+			if (!p.refID) continue;
+			DWORD waited = now - p.start;
+			if (forms::LookupByID(p.refID) != p.ref) { p.refID = 0; continue; } // decharge entre-temps
+			Body b[kMaxBodies];
+			int n = CollectBodies(p.ref, b);
+			int i = n ? FindBody(b, n, p.bone) : -1;
+			if (i >= 0 && hk::IsDynamic(At<UInt8>(b[i].rb, hk::kMotionType)))
+			{
+				int pushed = PushBodyAndNeighbours(b, n, i, p.J, BodyCenter(b[i].rb) + p.offset);
+				if (g_cfg.verbose)
+					Log("Mort de %08X : poussee %.1f sur %s appliquee apres %lu ms, %d corps pousses",
+						p.refID, Len(p.J), p.bone, waited, pushed);
+				p.refID = 0;
+			}
+			else if (waited > (DWORD)(g_cfg.fatalWait * 1000.f))
+			{
+				if (g_cfg.verbose)
+					Log("Mort de %08X : toujours anime apres %lu ms, poussee abandonnee", p.refID, waited);
+				p.refID = 0;
+			}
+		}
+	}
+
 	// ------------------------------------------------------------------ reaction a un coup
 	void React(void* target, void* attacker)
 	{
@@ -350,12 +419,18 @@ namespace
 		if (flags & hit::kFlag_IsCritical) push *= g_cfg.criticalMult;
 		if (push > g_cfg.maxPush) push = g_cfg.maxPush;
 
+		bool fatal = (flags & hit::kFlag_IsFatal) != 0;
+		if (fatal) push *= g_cfg.fatalMult;
+
 		int pushed = PushBodyAndNeighbours(b, n, i, dir * push, p);
+		bool deferred = !pushed && fatal && g_cfg.deferFatal;
+		if (deferred) QueueFatalPush(target, b[i].name, dir * push, p - BodyCenter(b[i].rb));
 		if (g_cfg.verbose)
-			Log("Coup sur %08X par %08X : %s, degats %.1f, os %s (%s), poussee %.1f, %d corps pousses%s",
-				RefID(target), RefID(attacker), explosion ? "explosion" : melee ? "melee" : "tir", dmg,
-				b[i].name ? b[i].name : "?", hk::MotionName(At<UInt8>(b[i].rb, hk::kMotionType)), push, pushed,
-				pushed ? "" : " (corps animes : le Ragdoll Feedback ne les a pas rendus dynamiques)");
+			Log("Coup sur %08X par %08X : %s%s, degats %.1f, drapeaux %X, os %s (%s), poussee %.1f, %d corps pousses%s",
+				RefID(target), RefID(attacker), explosion ? "explosion" : melee ? "melee" : "tir", fatal ? " FATAL" : "",
+				dmg, flags, b[i].name ? b[i].name : "?", hk::MotionName(At<UInt8>(b[i].rb, hk::kMotionType)), push,
+				pushed, deferred ? " (mis en attente du ragdoll de mort)"
+				: pushed ? "" : " (corps animes : le Ragdoll Feedback ne les a pas rendus dynamiques)");
 	}
 
 	void OnHit(void* /*thisObj*/, void* parameters)
@@ -475,9 +550,16 @@ namespace
 		case NVSEMessagingInterface::kMessage_PostLoadGame:
 			LoadConfig(); // relu a chaque chargement de partie, pour regler sans relancer le jeu
 			ApplyGameSettings();
+			ClearPending();
 			break;
 		case NVSEMessagingInterface::kMessage_MainGameLoop:
 			PollKeys();
+			__try { ProcessPending(); }
+			__except (EXCEPTION_EXECUTE_HANDLER)
+			{
+				Log("ERREUR : exception %08X pendant une poussee differee", GetExceptionCode());
+				ClearPending();
+			}
 			break;
 		}
 	}

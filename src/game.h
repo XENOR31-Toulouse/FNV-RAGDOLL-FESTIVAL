@@ -156,6 +156,24 @@ namespace ui
 	constexpr UInt32 kCrosshairRef = 0xFC;               // TESObjectREFR*
 }
 
+// Table de toutes les formes chargees : NiTPointerMap<TESForm> (+4 nb de seaux, +8 seaux ; entree : +0 suivante,
+// +4 cle, +8 forme). Sert a verifier qu'une reference gardee quelques images existe encore.
+namespace forms
+{
+	constexpr UInt32 kAddr_FormsMap = 0x11C54C0; // NiTPointerMap<TESForm>**
+	inline void* LookupByID(UInt32 refID)
+	{
+		void* map = *(void**)kAddr_FormsMap;
+		if (!map) return nullptr;
+		UInt32 numBuckets = At<UInt32>(map, 4);
+		void** buckets = At<void**>(map, 8);
+		if (!numBuckets || !buckets) return nullptr;
+		for (void* e = buckets[refID % numBuckets]; e; e = At<void*>(e, 0))
+			if (At<UInt32>(e, 4) == refID) return At<void*>(e, 8);
+		return nullptr;
+	}
+}
+
 namespace player
 {
 	constexpr UInt32 kAddr_PlayerCharacter = 0x11DEA3C; // PlayerCharacter**

@@ -79,6 +79,7 @@ Modules (même découpage que Delirium) : `hooks` (coups, impacts, passage en ra
 
 - Étapes 0 à 2 écrites et compilées (`src/main.cpp`), **pas encore testées en jeu**.
 - Découverte : le moteur a un système natif de mélange animation / ragdoll, la section `[RagdollAnim]` de Fallout.ini (`bRagdollFeedback`, `fPositionGain`, `fVelocityGain`, `fHierarchyGain`, `fSnapGain`…). Le mod Ragdolls ne faisait qu'activer `bRagdollFeedback`. Notre plugin l'active et permet de régler les gains depuis son .ini.
+- Début de l'étape 5 : au coup fatal, si le PNJ est encore animé, la poussée attend son ragdoll de mort (0,6 s au plus) et s'applique au même os, au même point, dans le même sens. Elle remplace la « force locationnelle » de Ragdolls. La poussée de mort propre à chaque arme (vanilla) s'ajoute encore : à revoir après le test.
 - Le test en jeu (F8 / F7 / tirs) doit dire si les corps d'un PNJ vivant deviennent dynamiques au moment d'un coup.
 
 ## 5. Risques
