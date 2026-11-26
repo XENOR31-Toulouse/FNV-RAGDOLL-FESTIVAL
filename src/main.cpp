@@ -76,6 +76,17 @@ namespace
 		float knockForce = 30.f;
 		float knockForceMax = 2.0f;
 		float knockLocalShare = 0.5f;
+		// [Muscles] etape 4
+		bool muscles = true;
+		bool musclesOnKnockdown = true;
+		bool musclesOnDeath = true;
+		float muscleTime = 1.5f;
+		float muscleDeathTime = 0.8f;
+		float jointDamping = 0.25f;
+		float neckDamping = 0.5f;
+		float armPull = 25.f;
+		float armDamping = 8.f;
+		float armMaxDv = 4.f;
 		// [RagdollAnim] reglages natifs du jeu
 		bool forceFeedback = true;
 	} g_cfg;
@@ -118,6 +129,16 @@ namespace
 		c.knockForce = IniFloat("Reactions", "fKnockdownForce", c.knockForce);
 		c.knockForceMax = IniFloat("Reactions", "fKnockdownForceMaxMult", c.knockForceMax);
 		c.knockLocalShare = IniFloat("Reactions", "fKnockdownLocalPush", c.knockLocalShare);
+		c.muscles = IniInt("Muscles", "bEnabled", 1) != 0;
+		c.musclesOnKnockdown = IniInt("Muscles", "bOnKnockdown", 1) != 0;
+		c.musclesOnDeath = IniInt("Muscles", "bOnDeath", 1) != 0;
+		c.muscleTime = IniFloat("Muscles", "fKnockdownTime", c.muscleTime);
+		c.muscleDeathTime = IniFloat("Muscles", "fDeathTime", c.muscleDeathTime);
+		c.jointDamping = IniFloat("Muscles", "fJointTension", c.jointDamping);
+		c.neckDamping = IniFloat("Muscles", "fNeckTension", c.neckDamping);
+		c.armPull = IniFloat("Muscles", "fArmPull", c.armPull);
+		c.armDamping = IniFloat("Muscles", "fArmDamping", c.armDamping);
+		c.armMaxDv = IniFloat("Muscles", "fArmMaxSpeed", c.armMaxDv);
 		c.forceFeedback = IniInt("RagdollAnim", "bRagdollFeedback", 1) != 0;
 		g_cfg = c;
 		Log("Reglages lus : %s (%s)", g_iniPath,
@@ -339,6 +360,150 @@ namespace
 		Log("=== %d dynamiques / %d", dynamic, n);
 	}
 
+	// ------------------------------------------------------------------ muscles pendant la chute (etape 4)
+	// Inspire de Skyrim Delirium : le ragdoll du jeu reste le corps, on lui ajoute des « muscles » a chaque image.
+	// 1. Tension : chaque articulation freine la rotation de l'os par rapport a son parent (le cou plus fort),
+	//    l'effort etant partage entre les deux os selon leur inertie : rien ne tourne « tout seul ».
+	// 2. Reflexe de protection : chaque main est tiree vers un point devant et sous la poitrine, dans le sens de la
+	//    chute (pour se rattraper), avec la force opposee sur la poitrine : le corps entier n'est pas propulse.
+	// Les axes locaux des os de New Vegas ne sont pas documentes : tout est exprime dans l'espace du monde.
+	struct MuscleTask
+	{
+		UInt32 refID;    // 0 = case libre
+		void* ref;
+		DWORD start;
+		DWORD last;
+		float duration;  // secondes
+		bool dying;      // a la mort, les muscles lachent progressivement
+		V3 fallDir;      // horizontal, unitaire
+		float reach;     // longueur du bras (epaule -> main), unites Havok, mesuree a la premiere image
+	};
+	constexpr int kMaxMuscles = 8;
+	SInt32 KnockedState(void* actorRef); // plus bas
+	MuscleTask g_muscles[kMaxMuscles] = {};
+
+	void ClearMuscles() { memset(g_muscles, 0, sizeof(g_muscles)); }
+
+	void StartMuscles(void* target, bool dying, V3 fallDir)
+	{
+		if (!g_cfg.muscles || (dying ? !g_cfg.musclesOnDeath : !g_cfg.musclesOnKnockdown)) return;
+		MuscleTask* slot = nullptr;
+		for (MuscleTask& m : g_muscles)
+		{
+			if (m.refID == RefID(target)) { slot = &m; break; }
+			if (!slot && !m.refID) slot = &m;
+		}
+		if (!slot) return; // trop de PNJ au sol en meme temps : les suivants tombent sans muscles
+		fallDir.z = 0.f;
+		*slot = {RefID(target), target, GetTickCount(), GetTickCount(),
+			dying ? g_cfg.muscleDeathTime : g_cfg.muscleTime, dying, Norm(fallDir), 0.f};
+		if (g_cfg.verbose) Log("Muscles de %08X : debut (%s)", slot->refID, dying ? "mort" : "chute");
+	}
+
+	// inverse d'inertie moyenne (scalaire) : suffisant pour repartir un effort entre deux os
+	float InvInertia(UInt8* rb) { V3 i = Load3(rb, hk::kInvInertia); return (i.x + i.y + i.z) / 3.f; }
+
+	void AddLinVel(UInt8* rb, V3 dv) { float* v = &At<float>(rb, hk::kLinVelocity); v[0] += dv.x; v[1] += dv.y; v[2] += dv.z; }
+	void AddAngVel(UInt8* rb, V3 dw) { float* w = &At<float>(rb, hk::kAngVelocity); w[0] += dw.x; w[1] += dw.y; w[2] += dw.z; }
+
+	// Tire la main i vers target, la poitrine c en sens inverse (ressort amorti, PD)
+	void PullHand(const Body* b, int hand, int chest, V3 target, float strength, float dt)
+	{
+		UInt8* h = b[hand].rb;
+		UInt8* c = b[chest].rb;
+		V3 e = target - BodyCenter(h);
+		V3 vrel = Load3(h, hk::kLinVelocity) - Load3(c, hk::kLinVelocity);
+		V3 dv = (e * g_cfg.armPull - vrel * g_cfg.armDamping) * (dt * strength);
+		float l = Len(dv);
+		if (l > g_cfg.armMaxDv) dv = dv * (g_cfg.armMaxDv / l);
+		float imh = At<float>(h, hk::kInvMass), imc = At<float>(c, hk::kInvMass);
+		if (imh + imc <= 0.f) return;
+		V3 J = dv * (1.f / (imh + imc)); // impulsion qui change la vitesse relative de dv
+		AddLinVel(h, J * imh);
+		AddLinVel(c, J * -imc);
+	}
+
+	// Renvoie false quand la tache est finie
+	bool UpdateMuscle(MuscleTask& m, DWORD now)
+	{
+		if (forms::LookupByID(m.refID) != m.ref) return false;
+		float age = (now - m.start) / 1000.f;
+		if (age > m.duration) return false;
+		if (!m.dying && KnockedState(m.ref) == 6) return false; // il se releve : on rend la main au jeu
+		float dt = (now - m.last) / 1000.f;
+		m.last = now;
+		if (dt <= 0.f) return true;
+		if (dt > 0.05f) dt = 0.05f;
+
+		Body b[kMaxBodies];
+		int n = CollectBodies(m.ref, b);
+		int chest = FindBody(b, n, "Bip01 Spine2");
+		if (chest < 0 || !hk::IsDynamic(At<UInt8>(b[chest].rb, hk::kMotionType))) return false; // plus de ragdoll
+
+		// force : pleine puis decroissante (a la mort elle decroit des le debut : les muscles lachent)
+		float t = age / m.duration;
+		float strength = m.dying ? (1.f - t) : (t < 0.6f ? 1.f : (1.f - t) / 0.4f);
+		bool touched[kMaxBodies] = {};
+
+		// 1. tension des articulations
+		for (int k = 0; k < n; ++k)
+		{
+			int p = b[k].parent;
+			if (p < 0) continue;
+			UInt8* ck = b[k].rb;
+			UInt8* cp = b[p].rb;
+			if (!hk::IsDynamic(At<UInt8>(ck, hk::kMotionType)) || !hk::IsDynamic(At<UInt8>(cp, hk::kMotionType))) continue;
+			float damp = g_cfg.jointDamping;
+			if (b[k].name && (strstr(b[k].name, "Head") || strstr(b[k].name, "Neck"))) damp = g_cfg.neckDamping;
+			damp *= strength;
+			if (damp > 0.9f) damp = 0.9f;
+			damp = 1.f - powf(1.f - damp, dt * 60.f); // reglage donne pour 60 images/s, meme effet a tout framerate
+			float ik = InvInertia(ck), ip = InvInertia(cp);
+			if (ik + ip <= 0.f) continue;
+			V3 wrel = Load3(ck, hk::kAngVelocity) - Load3(cp, hk::kAngVelocity);
+			V3 T = wrel * (-damp / (ik + ip)); // impulsion angulaire qui retire damp de la rotation relative
+			AddAngVel(ck, T * ik);
+			AddAngVel(cp, T * -ip);
+			touched[k] = touched[p] = true;
+		}
+
+		// 2. les mains se tendent pour amortir la chute
+		const char* sides[2][2] = {{"Bip01 L Hand", "Bip01 L UpperArm"}, {"Bip01 R Hand", "Bip01 R UpperArm"}};
+		V3 chestPos = BodyCenter(b[chest].rb);
+		for (auto& s : sides)
+		{
+			int hand = FindBody(b, n, s[0]);
+			int shoulder = FindBody(b, n, s[1]);
+			if (hand < 0 || shoulder < 0 || !hk::IsDynamic(At<UInt8>(b[hand].rb, hk::kMotionType))) continue;
+			V3 sh = BodyCenter(b[shoulder].rb);
+			if (m.reach <= 0.f) m.reach = Len(BodyCenter(b[hand].rb) - sh) * 1.6f; // centre du bras -> longueur
+			V3 side = sh - chestPos;
+			side.z = 0.f;
+			V3 target = sh + m.fallDir * (m.reach * 0.6f) + side * 0.3f + V3{0, 0, -m.reach * 0.5f};
+			PullHand(b, hand, chest, target, strength, dt);
+			touched[hand] = touched[chest] = true;
+		}
+
+		using Fn = void(__thiscall*)(void*);
+		for (int k = 0; k < n; ++k)
+			if (touched[k]) ((Fn)hk::kAddr_UpdateMotion)(b[k].rb);
+		return true;
+	}
+
+	void UpdateMuscles()
+	{
+		DWORD now = GetTickCount();
+		for (MuscleTask& m : g_muscles)
+		{
+			if (!m.refID) continue;
+			if (!UpdateMuscle(m, now))
+			{
+				if (g_cfg.verbose) Log("Muscles de %08X : fin apres %lu ms", m.refID, now - m.start);
+				m.refID = 0;
+			}
+		}
+	}
+
 	// ------------------------------------------------------------------ coup fatal : poussee differee
 	// Au moment du coup fatal, le PNJ est souvent encore anime : le moteur ignorerait la poussee. On la garde, et
 	// on l'applique des que ses corps deviennent dynamiques (ragdoll de mort), au meme os et au meme point de l'os.
@@ -410,6 +575,7 @@ namespace
 			{
 				int carried = AddVelocityToAll(b, n, p.carry);
 				int pushed = PushBodyAndNeighbours(b, n, i, p.J, BodyCenter(b[i].rb) + p.offset);
+				StartMuscles(p.ref, !strcmp(p.what, "Mort"), p.carry + Norm(p.J));
 				if (g_cfg.verbose)
 					Log("%s de %08X : poussee %.1f sur %s appliquee apres %lu ms, %d corps pousses, elan %.2f sur %d corps",
 						p.what, p.refID, Len(p.J), p.bone, waited, pushed, Len(p.carry), carried);
@@ -596,6 +762,12 @@ namespace
 		int pushed = PushBodyAndNeighbours(b, n, i, dir * push, p);
 		bool deferred = !pushed && fatal && g_cfg.deferFatal;
 		if (deferred) QueuePush(target, "Mort", b[i].name, dir * push, p - BodyCenter(b[i].rb), carry);
+		else if (fatal && pushed)
+		{
+			// deja en ragdoll au moment du coup fatal : elan et muscles tout de suite
+			AddVelocityToAll(b, n, carry);
+			StartMuscles(target, true, carry + dir);
+		}
 		if (g_cfg.verbose)
 			Log("Coup sur %08X par %08X : %s%s, degats %.1f x%d, drapeaux %X, os %s (%s), force %.1f, charge %.1f -> %s, "
 				"poussee %.1f, %d corps pousses%s",
@@ -725,6 +897,7 @@ namespace
 			LoadConfig(); // relu a chaque chargement de partie, pour regler sans relancer le jeu
 			ApplyGameSettings();
 			ClearPending();
+			ClearMuscles();
 			break;
 		case NVSEMessagingInterface::kMessage_MainGameLoop:
 			PollKeys();
@@ -733,6 +906,12 @@ namespace
 			{
 				Log("ERREUR : exception %08X pendant une poussee differee", GetExceptionCode());
 				ClearPending();
+			}
+			__try { UpdateMuscles(); }
+			__except (EXCEPTION_EXECUTE_HANDLER)
+			{
+				Log("ERREUR : exception %08X pendant les muscles", GetExceptionCode());
+				ClearMuscles();
 			}
 			break;
 		}
