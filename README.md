@@ -2,7 +2,7 @@
 
 Plugin xNVSE pour Fallout New Vegas : les PNJ **vivants** réagissent physiquement aux coups. Le mod est autonome : il remplace le mod Ragdolls (ne pas les activer ensemble). Conception : [docs/00-conception.md](docs/00-conception.md).
 
-État : version 0.1.0-alpha, étapes 0 à 6 et 8 écrites et compilées (l'étape 7, créatures, reste à faire), **pas encore testées en jeu**. Un PNJ touché tressaille, titube ou tombe selon la force des coups reçus ; à la mort, la poussée part de l'endroit touché et le corps garde son élan. Pendant une chute ou une mort, ses articulations se raidissent et ses mains se tendent pour se rattraper. En mourant, il peut porter la main à sa blessure, ou rester debout un instant avant que ses jambes cèdent. Dans le feu, il bat des bras et des jambes ; électrocuté, il tremble ; projeté par une explosion, ses bras tournent en moulinet pendant le vol.
+État : version 0.2.0-alpha (menu de réglages en jeu), étapes 0 à 6 et 8 écrites et compilées (l'étape 7, créatures, reste à faire), **pas encore testées en jeu**. Un PNJ touché tressaille, titube ou tombe selon la force des coups reçus ; à la mort, la poussée part de l'endroit touché et le corps garde son élan. Pendant une chute ou une mort, ses articulations se raidissent et ses mains se tendent pour se rattraper. En mourant, il peut porter la main à sa blessure, ou rester debout un instant avant que ses jambes cèdent. Dans le feu, il bat des bras et des jambes ; électrocuté, il tremble ; projeté par une explosion, ses bras tournent en moulinet pendant le vol.
 
 ## Prérequis
 
@@ -24,7 +24,7 @@ Le script produit `build\NVReactiveRagdoll.dll` (32 bits), le copie avec le .ini
 package.cmd
 ```
 
-Compile, puis crée `dist\NVReactiveRagdoll-<version>.zip` (racine = dossier Data : `NVSE\Plugins\` avec la DLL, le .ini et la licence). La version vient de `kVersionName` dans `src\main.cpp`. La description pour Nexus est dans [docs/nexus-description.bbcode](docs/nexus-description.bbcode).
+Compile, puis crée `dist\NVReactiveRagdoll-<version>.zip` (racine = dossier Data : `NVSE\Plugins\` avec la DLL et la licence, `Config\` avec le .ini, `MCM\` avec le menu). La version vient de `kVersionName` dans `src\main.cpp`. La description pour Nexus est dans [docs/nexus-description.bbcode](docs/nexus-description.bbcode).
 
 ## Compatibilité
 
@@ -46,7 +46,11 @@ Ce qu'il faut regarder dans le journal : la colonne « anime(keyframed) » ou «
 
 ## Réglages
 
-`NVSE\Plugins\NVReactiveRagdoll.ini`, relu à chaque chargement de partie. La section `[RagdollAnim]` écrit les réglages natifs du jeu qui pilotent le mélange animation / physique. Le journal affiche leurs valeurs avant et après au démarrage.
+**En jeu** : menu pause, *Mod Configuration*, page **NV Reactive Ragdoll** (6 pages, 51 options). Il faut [The Mod Configuration Menu](https://www.nexusmods.com/newvegas/mods/42507) et [MCM Extender](https://www.nexusmods.com/newvegas/mods/93642) ; sans eux, le mod marche quand même, réglable par le fichier. Les changements s'appliquent à la fermeture du menu pause.
+
+**Fichier** : `Data\Config\NVReactiveRagdoll.ini` (c'est là que le menu écrit), relu à chaque chargement de partie et dès qu'il change. Un .ini à l'ancienne place (`NVSE\Plugins\`, version 0.1.0) est encore lu s'il n'y en a pas dans `Config\`. La section `[RagdollAnim]` écrit les réglages natifs du jeu qui pilotent le mélange animation / physique ; le journal affiche leurs valeurs avant et après.
+
+Le menu est généré par `python tools\make_mcm.py` à partir du .ini (valeurs par défaut) : à relancer après avoir ajouté un réglage au menu.
 
 ## Sources et licence
 

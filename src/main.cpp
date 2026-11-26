@@ -19,8 +19,8 @@
 
 namespace
 {
-	constexpr UInt32 kPluginVersion = 1;            // pour xNVSE : entier qui augmente a chaque version publiee
-	constexpr const char* kVersionName = "0.1.0-alpha"; // pour les joueurs : version du paquet
+	constexpr UInt32 kPluginVersion = 2;            // pour xNVSE : entier qui augmente a chaque version publiee
+	constexpr const char* kVersionName = "0.2.0-alpha"; // pour les joueurs : version du paquet
 	constexpr const char* kPluginName = "NVReactiveRagdoll";
 
 	PluginHandle g_handle = 0xFFFFFFFF;
@@ -132,6 +132,19 @@ namespace
 	}
 	int IniInt(const char* sec, const char* key, int def) { return (int)GetPrivateProfileIntA(sec, key, def, g_iniPath); }
 
+	// Relecture a chaud : le menu MCM enregistre le .ini quand on ferme le menu pause ; on regarde sa date
+	// d'ecriture une fois par seconde.
+	FILETIME g_iniTime = {};
+	DWORD g_lastIniCheck = 0;
+
+	bool IniWriteTime(FILETIME& out)
+	{
+		WIN32_FILE_ATTRIBUTE_DATA d;
+		if (!GetFileAttributesExA(g_iniPath, GetFileExInfoStandard, &d)) return false;
+		out = d.ftLastWriteTime;
+		return true;
+	}
+
 	void LoadConfig()
 	{
 		Config c;
@@ -201,6 +214,7 @@ namespace
 		c.yieldExplosionReactions = IniInt("Compatibility", "bYieldToExplosionReactions", 1) != 0;
 		c.forceFeedback = IniInt("RagdollAnim", "bRagdollFeedback", 1) != 0;
 		g_cfg = c;
+		IniWriteTime(g_iniTime);
 		Log("Reglages lus : %s (%s)", g_iniPath,
 			GetFileAttributesA(g_iniPath) != INVALID_FILE_ATTRIBUTES ? "trouve" : "ABSENT, valeurs par defaut");
 		Log("  actif %d, poussee %.1f + %.2f/degat (max %.0f), voisins %.2f, test F7 %.0f",
@@ -252,6 +266,18 @@ namespace
 				Log("  %-32s %u -> %u", name ? name : s.key, before, At<UInt32>(setting, ini::kValue));
 			}
 		}
+	}
+
+	void CheckIniChanged()
+	{
+		DWORD now = GetTickCount();
+		if (now - g_lastIniCheck < 1000) return;
+		g_lastIniCheck = now;
+		FILETIME t;
+		if (!IniWriteTime(t) || !CompareFileTime(&t, &g_iniTime)) return;
+		Log("Reglages modifies (menu MCM ou fichier) : relecture");
+		LoadConfig();
+		ApplyGameSettings();
 	}
 
 	// ------------------------------------------------------------------ petits vecteurs
@@ -1240,6 +1266,7 @@ namespace
 			ClearMuscles();
 			break;
 		case NVSEMessagingInterface::kMessage_MainGameLoop:
+			CheckIniChanged();
 			PollKeys();
 			__try { ProcessPending(); }
 			__except (EXCEPTION_EXECUTE_HANDLER)
@@ -1277,7 +1304,14 @@ extern "C"
 		char logPath[MAX_PATH];
 		snprintf(logPath, sizeof(logPath), "%sNVReactiveRagdoll.log", g_gameDir);
 		g_log = _fsopen(logPath, "w", _SH_DENYWR);
-		snprintf(g_iniPath, sizeof(g_iniPath), "%sData\\NVSE\\Plugins\\NVReactiveRagdoll.ini", g_gameDir);
+		// Data\Config\ : c'est la que le menu MCM (MCM Extender) lit et ecrit. Ancienne place (0.1.0) acceptee.
+		snprintf(g_iniPath, sizeof(g_iniPath), "%sData\\Config\\NVReactiveRagdoll.ini", g_gameDir);
+		if (GetFileAttributesA(g_iniPath) == INVALID_FILE_ATTRIBUTES)
+		{
+			char old[MAX_PATH];
+			snprintf(old, sizeof(old), "%sData\\NVSE\\Plugins\\NVReactiveRagdoll.ini", g_gameDir);
+			if (GetFileAttributesA(old) != INVALID_FILE_ATTRIBUTES) snprintf(g_iniPath, sizeof(g_iniPath), "%s", old);
+		}
 
 		Log("NV Reactive Ragdoll %s, xNVSE %08X, jeu %08X", kVersionName, nvse->nvseVersion, nvse->runtimeVersion);
 		srand(GetTickCount());
