@@ -110,6 +110,22 @@ namespace anim
 namespace weap
 {
 	constexpr UInt32 kNumProjectiles = 0x11E; // UInt8 : plombs par tir (fusils a pompe)
+	constexpr UInt32 kResistType = 0x16C;     // SInt32 : valeur d'acteur qui resiste aux degats de l'arme
+}
+
+// Valeurs d'acteur de resistance (JIP GameForms.h)
+namespace av
+{
+	constexpr SInt32 kFireResist = 0x34;
+	constexpr SInt32 kElectricResist = 0x3A;
+	constexpr SInt32 kEmpResist = 0x3D;
+}
+
+// BGSProjectile : type en +0x62 (UInt16) ; 8 = flamme (lance-flammes, incinerateur)
+namespace projform
+{
+	constexpr UInt32 kType = 0x62;
+	constexpr UInt16 kType_Flame = 8;
 }
 
 // ActorHitData (0x64)

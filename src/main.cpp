@@ -14,6 +14,7 @@
 #include <cstring>
 #include <cstdlib>
 #include <share.h>
+#include <initializer_list>
 #include "game.h"
 
 namespace
@@ -99,6 +100,22 @@ namespace
 		float standTime = 0.8f;
 		float standSupport = 0.9f;
 		float standPushMult = 0.3f;
+		// etape 6 : [Fire], [Shock], [Explosions]
+		bool elements = true;
+		float burnTime = 2.5f;
+		float burnDeathTime = 2.5f;
+		float flailTimer = 0.3f;
+		float fireArmPull = 1.2f;
+		float fireLegKick = 6.f;
+		float livingFlail = 15.f;
+		float shockTime = 1.5f;
+		float shockShake = 1.5f;
+		float livingShake = 8.f;
+		float explosionUp = 0.5f;
+		float explosionKnockMult = 1.5f;
+		float flyTime = 1.2f;
+		float flyMinSpeed = 3.f;
+		float windmillSpeed = 8.f;
 		// [RagdollAnim] reglages natifs du jeu
 		bool forceFeedback = true;
 	} g_cfg;
@@ -162,6 +179,21 @@ namespace
 		c.standTime = IniFloat("Death", "fStandingTime", c.standTime);
 		c.standSupport = IniFloat("Death", "fStandingSupport", c.standSupport);
 		c.standPushMult = IniFloat("Death", "fStandingPushMult", c.standPushMult);
+		c.elements = IniInt("General", "bElements", 1) != 0;
+		c.burnTime = IniFloat("Fire", "fBurnTime", c.burnTime);
+		c.burnDeathTime = IniFloat("Fire", "fDeathTime", c.burnDeathTime);
+		c.flailTimer = IniFloat("Fire", "fFlailTimer", c.flailTimer);
+		c.fireArmPull = IniFloat("Fire", "fArmPull", c.fireArmPull);
+		c.fireLegKick = IniFloat("Fire", "fLegKick", c.fireLegKick);
+		c.livingFlail = IniFloat("Fire", "fLivingFlail", c.livingFlail);
+		c.shockTime = IniFloat("Shock", "fShockTime", c.shockTime);
+		c.shockShake = IniFloat("Shock", "fShake", c.shockShake);
+		c.livingShake = IniFloat("Shock", "fLivingShake", c.livingShake);
+		c.explosionUp = IniFloat("Explosions", "fUp", c.explosionUp);
+		c.explosionKnockMult = IniFloat("Explosions", "fKnockdownMult", c.explosionKnockMult);
+		c.flyTime = IniFloat("Explosions", "fFlyTime", c.flyTime);
+		c.flyMinSpeed = IniFloat("Explosions", "fFlyMinSpeed", c.flyMinSpeed);
+		c.windmillSpeed = IniFloat("Explosions", "fWindmillSpeed", c.windmillSpeed);
 		c.forceFeedback = IniInt("RagdollAnim", "bRagdollFeedback", 1) != 0;
 		g_cfg = c;
 		Log("Reglages lus : %s (%s)", g_iniPath,
@@ -393,7 +425,12 @@ namespace
 	// 2. Reflexe de protection : chaque main est tiree vers un point devant et sous la poitrine, dans le sens de la
 	//    chute (pour se rattraper), avec la force opposee sur la poitrine : le corps entier n'est pas propulse.
 	// Les axes locaux des os de New Vegas ne sont pas documentes : tout est exprime dans l'espace du monde.
-	// Etape 5 : facon de mourir, choisie au coup fatal (inspire du mod Ragdolls)
+	// Etape 6 : element du coup
+	enum Element { kElem_None = 0, kElem_Fire, kElem_Shock };
+	const char* ElementName(int e) { return e == kElem_Fire ? "feu" : e == kElem_Shock ? "electricite" : ""; }
+
+	// Etape 5 : facon de mourir, choisie au coup fatal (inspire du mod Ragdolls) ; etape 6 : feu, electricite,
+	// explosion, aussi pour une chute
 	struct DeathStyle
 	{
 		bool grab;        // une main va sur la plaie
@@ -401,7 +438,20 @@ namespace
 		char wound[32];   // os touche
 		V3 woundLocal;    // point de la plaie dans le repere de l'os
 		bool stand;       // reste debout un instant, puis s'effondre
+		int element;      // Element : le feu fait battre bras et jambes, l'electricite fait trembler
+		bool explosion;   // projete en l'air : bras en moulinet et jambes qui pedalent tant qu'il vole
 	};
+
+	// direction aleatoire, unitaire
+	V3 RandomDir()
+	{
+		for (;;)
+		{
+			V3 v = {(float)rand() / RAND_MAX * 2.f - 1.f, (float)rand() / RAND_MAX * 2.f - 1.f, (float)rand() / RAND_MAX * 2.f - 1.f};
+			float l = Len(v);
+			if (l > 0.1f && l <= 1.f) return v * (1.f / l);
+		}
+	}
 
 	// Repere d'un os : 3 colonnes de rotation (hkMatrix3x4)
 	V3 ToWorld(UInt8* rb, V3 l)
@@ -437,6 +487,8 @@ namespace
 		V3 fallDir;      // horizontal, unitaire
 		float reach;     // longueur du bras (epaule -> main), unites Havok, mesuree a la premiere image
 		DeathStyle death;
+		V3 flail[2];     // feu : direction ou chaque main bat, changee toutes les fFlailTimer s
+		DWORD nextFlail;
 	};
 	constexpr int kMaxMuscles = 8;
 	SInt32 KnockedState(void* actorRef); // plus bas
@@ -457,10 +509,14 @@ namespace
 		fallDir.z = 0.f;
 		DeathStyle ds = death ? *death : DeathStyle{};
 		float duration = dying ? g_cfg.muscleDeathTime + (ds.stand ? g_cfg.standTime : 0.f) : g_cfg.muscleTime;
+		if (ds.element == kElem_Fire && g_cfg.burnDeathTime > duration) duration = g_cfg.burnDeathTime;
+		if (ds.element == kElem_Shock && g_cfg.shockTime > duration) duration = g_cfg.shockTime;
+		if (ds.explosion && g_cfg.flyTime + 0.5f > duration) duration = g_cfg.flyTime + 0.5f;
 		*slot = {RefID(target), target, GetTickCount(), GetTickCount(), duration, dying, Norm(fallDir), 0.f, ds};
 		if (g_cfg.verbose)
-			Log("Muscles de %08X : debut (%s%s%s%s)", slot->refID, dying ? "mort" : "chute",
-				ds.stand ? ", reste debout" : "", ds.grab ? ", main sur la plaie : " : "", ds.grab ? ds.wound : "");
+			Log("Muscles de %08X : debut (%s%s%s%s%s%s%s), %.1f s", slot->refID, dying ? "mort" : "chute",
+				ds.stand ? ", reste debout" : "", ds.grab ? ", main sur la plaie : " : "", ds.grab ? ds.wound : "",
+				ds.element ? ", " : "", ElementName(ds.element), ds.explosion ? ", projete" : "", duration);
 	}
 
 	// inverse d'inertie moyenne (scalaire) : suffisant pour repartir un effort entre deux os
@@ -510,6 +566,61 @@ namespace
 		float strength = m.dying ? (age < standT ? 1.f : 1.f - (age - standT) / (m.duration - standT))
 			: (t < 0.6f ? 1.f : (1.f - t) / 0.4f);
 		bool touched[kMaxBodies] = {};
+		int elem = m.death.element;
+		// projete par une explosion : tant qu'il vole vite, bras en moulinet et jambes qui pedalent
+		bool flying = m.death.explosion && age < g_cfg.flyTime
+			&& Len(Load3(b[chest].rb, hk::kLinVelocity)) > g_cfg.flyMinSpeed;
+
+		// 4. feu : toutes les fFlailTimer s, chaque main repart vers un autre endroit du corps (elle tape les
+		//    flammes) et les jambes donnent un coup au hasard
+		if (elem == kElem_Fire && now >= m.nextFlail)
+		{
+			m.nextFlail = now + (DWORD)(g_cfg.flailTimer * 1000.f);
+			for (V3& f : m.flail) f = Norm(RandomDir() + V3{0, 0, 0.6f});
+			for (const char* leg : {"Bip01 L Calf", "Bip01 R Calf"})
+			{
+				int k = FindBody(b, n, leg);
+				if (k < 0 || !hk::IsDynamic(At<UInt8>(b[k].rb, hk::kMotionType))) continue;
+				AddAngVel(b[k].rb, RandomDir() * (g_cfg.fireLegKick * strength));
+				touched[k] = true;
+			}
+		}
+
+		// 5. electricite : chaque os tremble, a chaque image
+		if (elem == kElem_Shock)
+		{
+			float shake = g_cfg.shockShake * strength * (dt * 60.f);
+			for (int k = 0; k < n; ++k)
+			{
+				if (!hk::IsDynamic(At<UInt8>(b[k].rb, hk::kMotionType))) continue;
+				AddAngVel(b[k].rb, RandomDir() * shake);
+				touched[k] = true;
+			}
+		}
+
+		// 6. moulinet : les bras tournent autour de l'axe lateral, les jambes pedalent (en sens oppose l'une de
+		//    l'autre) ; l'effort inverse va sur la poitrine
+		if (flying)
+		{
+			V3 axis = Norm(Cross(m.fallDir, V3{0, 0, 1}));
+			const char* limbs[4] = {"Bip01 L UpperArm", "Bip01 R UpperArm", "Bip01 L Thigh", "Bip01 R Thigh"};
+			const float spin[4] = {1.f, 1.f, 1.f, -1.f};
+			UInt8* c = b[chest].rb;
+			float ic = InvInertia(c);
+			for (int l = 0; l < 4; ++l)
+			{
+				int k = FindBody(b, n, limbs[l]);
+				if (k < 0 || !hk::IsDynamic(At<UInt8>(b[k].rb, hk::kMotionType))) continue;
+				V3 want = axis * (g_cfg.windmillSpeed * spin[l]);
+				V3 rel = Load3(b[k].rb, hk::kAngVelocity) - Load3(c, hk::kAngVelocity);
+				V3 dw = (want - rel) * (0.2f * strength);
+				float ik = InvInertia(b[k].rb);
+				if (ik <= 0.f) continue;
+				AddAngVel(b[k].rb, dw);
+				AddAngVel(c, dw * (-ic / ik));
+				touched[k] = touched[chest] = true;
+			}
+		}
 
 		// 0. reste debout un instant : poitrine et bassin portes contre la gravite, de moins en moins, les jambes cedent
 		if (age < standT)
@@ -536,6 +647,7 @@ namespace
 			if (!hk::IsDynamic(At<UInt8>(ck, hk::kMotionType)) || !hk::IsDynamic(At<UInt8>(cp, hk::kMotionType))) continue;
 			float damp = g_cfg.jointDamping;
 			if (b[k].name && (strstr(b[k].name, "Head") || strstr(b[k].name, "Neck"))) damp = g_cfg.neckDamping;
+			if (elem == kElem_Shock) damp *= 2.f; // muscles contractes par le courant
 			damp *= strength;
 			if (damp > 0.9f) damp = 0.9f;
 			damp = 1.f - powf(1.f - damp, dt * 60.f); // reglage donne pour 60 images/s, meme effet a tout framerate
@@ -552,7 +664,7 @@ namespace
 		const char* sides[2][2] = {{"Bip01 L Hand", "Bip01 L UpperArm"}, {"Bip01 R Hand", "Bip01 R UpperArm"}};
 		V3 chestPos = BodyCenter(b[chest].rb);
 		int wound = m.death.grab ? FindBody(b, n, m.death.wound) : -1;
-		for (int s = 0; s < 2; ++s)
+		for (int s = 0; s < 2 && !flying && elem != kElem_Shock; ++s)
 		{
 			int hand = FindBody(b, n, sides[s][0]);
 			int shoulder = FindBody(b, n, sides[s][1]);
@@ -566,6 +678,11 @@ namespace
 				// 3. la main va sur la plaie, qui suit l'os touche dans sa chute
 				target = BodyCenter(b[wound].rb) + ToWorld(b[wound].rb, m.death.woundLocal);
 				pull *= g_cfg.grabPull;
+			}
+			else if (elem == kElem_Fire)
+			{
+				target = chestPos + m.flail[s] * (m.reach * 0.7f);
+				pull *= g_cfg.fireArmPull;
 			}
 			else
 			{
@@ -694,6 +811,9 @@ namespace
 		float charge;
 		DWORD lastHit;
 		DWORD lastStagger;
+		DWORD burnUntil;   // etape 6 : en feu jusqu'a (GetTickCount)
+		DWORD shockUntil;  // electrocute jusqu'a
+		DWORD nextFlail;
 	};
 	constexpr int kMaxStates = 32;
 	ActorState g_states[kMaxStates] = {};
@@ -707,7 +827,7 @@ namespace
 			if (s.refID == id) return s;
 			if (s.lastHit < oldest->lastHit) oldest = &s;
 		}
-		*oldest = {id, 0.f, GetTickCount(), 0};
+		*oldest = {id, 0.f, GetTickCount(), 0, 0, 0, 0};
 		return *oldest;
 	}
 
@@ -781,6 +901,24 @@ namespace
 	}
 
 	// ------------------------------------------------------------------ reaction a un coup
+	// Element du coup : par la resistance de l'arme (feu, electricite, IEM), sinon par le type du projectile (flamme)
+	int ElementOf(void* weapon, void* proj, void* attacker, bool explosion)
+	{
+		if (weapon && At<UInt8>(weapon, form::kTypeID) == 0x28)
+		{
+			SInt32 r = At<SInt32>(weapon, weap::kResistType);
+			if (r == av::kFireResist) return kElem_Fire;
+			if (r == av::kElectricResist || r == av::kEmpResist) return kElem_Shock;
+		}
+		if (proj && proj != attacker && !explosion)
+		{
+			void* base = At<void*>(proj, refr::kBaseForm);
+			if (base && At<UInt8>(base, form::kTypeID) == 0x33 && At<UInt16>(base, projform::kType) == projform::kType_Flame)
+				return kElem_Fire;
+		}
+		return kElem_None;
+	}
+
 	void React(void* target, void* attacker)
 	{
 		void* hd = HitDataOf(target);
@@ -795,6 +933,8 @@ namespace
 		void* proj = At<void*>(hd, hit::kProjectile);
 		bool explosion = (flags & hit::kFlag_IsExplosionHit) != 0;
 		bool melee = !explosion && (!proj || proj == attacker);
+		void* weapon = At<void*>(hd, hit::kWeapon);
+		int elem = g_cfg.elements ? ElementOf(weapon, proj, attacker, explosion) : kElem_None;
 		V3 impact = Load3(hd, hit::kImpactPos);
 		bool hasImpact = Len(impact) > 1.f;
 
@@ -810,11 +950,10 @@ namespace
 		V3 dir = p - src;
 		dir.z = 0.f;
 		dir = Norm(dir);
-		dir.z = g_cfg.up;
+		dir.z = explosion ? g_cfg.explosionUp : g_cfg.up; // une explosion souleve
 		dir = Norm(dir);
 
 		// force du coup ; un fusil a pompe compte tous ses plombs (xNVSE ne signale qu'un coup par image)
-		void* weapon = At<void*>(hd, hit::kWeapon);
 		int pellets = (!explosion && weapon) ? At<UInt8>(weapon, weap::kNumProjectiles) : 1;
 		if (pellets < 1) pellets = 1;
 		float force = (g_cfg.basePush + dmg * g_cfg.pushPerDamage) * pellets;
@@ -834,8 +973,21 @@ namespace
 		const char* reaction = "tressaille";
 		V3 carry = MoveVelocity(target) * g_cfg.carryVelocity;
 
-		// etape 5 : facon de mourir
+		// etape 6 : en feu ou electrocute pour un moment ; le premier coup de feu ou de courant fait tituber
+		DWORD now = GetTickCount();
+		bool elemStagger = false;
+		if (elem && !fatal)
+		{
+			DWORD& until = elem == kElem_Fire ? st.burnUntil : st.shockUntil;
+			float time = elem == kElem_Fire ? g_cfg.burnTime : g_cfg.shockTime;
+			elemStagger = until <= now;
+			until = now + (DWORD)(time * 1000.f);
+		}
+
+		// etape 5 : facon de mourir (etape 6 : et chute) ; le feu et le courant remplacent main sur la plaie et debout
 		DeathStyle ds = {};
+		ds.element = elem;
+		ds.explosion = explosion;
 		if (fatal)
 		{
 			reaction = "meurt";
@@ -843,7 +995,7 @@ namespace
 			bool head = strstr(bone, "Head") || strstr(bone, "Neck");
 			float limit = head ? 0.5f : 1.f; // un tir a la tete tue net plus facilement
 			float total = dmg * pellets;
-			bool muscles = g_cfg.muscles && g_cfg.musclesOnDeath; // la facon de mourir passe par les muscles
+			bool muscles = g_cfg.muscles && g_cfg.musclesOnDeath && !elem; // la facon de mourir passe par les muscles
 			if (muscles && g_cfg.grab && !explosion && total < g_cfg.grabMaxDamage * limit && Chance(g_cfg.grabChance))
 			{
 				ds.grab = true;
@@ -861,6 +1013,9 @@ namespace
 			}
 			if (ds.stand) reaction = ds.grab ? "meurt debout, main sur la plaie" : "meurt debout";
 			else if (ds.grab) reaction = "meurt, main sur la plaie";
+			else if (elem == kElem_Fire) reaction = "meurt en feu";
+			else if (elem == kElem_Shock) reaction = "meurt electrocute";
+			else if (explosion) reaction = "meurt, projete";
 		}
 		else if (standing && g_cfg.knockdown && charge >= g_cfg.knockAt)
 		{
@@ -868,13 +1023,13 @@ namespace
 			if (scale > g_cfg.knockForceMax) scale = g_cfg.knockForceMax;
 			void* srcRef = explosion && proj ? proj : attacker;
 			V3 srcGame = srcRef ? Load3(srcRef, refr::kPos) : (p - dir) * 7.f;
-			KnockDown(target, srcGame, g_cfg.knockForce * scale);
+			KnockDown(target, srcGame, g_cfg.knockForce * scale * (explosion ? g_cfg.explosionKnockMult : 1.f));
 			// le ragdoll commence une image plus tard : poussee au point touche et elan, des qu'il est dynamique
-			QueuePush(target, "Chute", b[i].name, dir * (push * g_cfg.knockLocalShare), p - BodyCenter(b[i].rb), carry, nullptr);
+			QueuePush(target, "Chute", b[i].name, dir * (push * g_cfg.knockLocalShare), p - BodyCenter(b[i].rb), carry, &ds);
 			st.charge = 0.f;
-			reaction = "tombe";
+			reaction = explosion ? "tombe, projete" : "tombe";
 		}
-		else if (standing && g_cfg.stagger && charge >= g_cfg.staggerAt && g_staggerGroup != 0xFFFFFFFF
+		else if (standing && g_cfg.stagger && (charge >= g_cfg.staggerAt || elemStagger) && g_staggerGroup != 0xFFFFFFFF
 			&& GetTickCount() - st.lastStagger > (DWORD)(g_cfg.staggerCooldown * 1000.f))
 		{
 			if (PlayAnimGroup(target, g_staggerGroup)) { st.lastStagger = GetTickCount(); reaction = "titube"; }
@@ -890,12 +1045,46 @@ namespace
 			StartMuscles(target, true, carry + dir, &ds);
 		}
 		if (g_cfg.verbose)
-			Log("Coup sur %08X par %08X : %s%s, degats %.1f x%d, drapeaux %X, os %s (%s), force %.1f, charge %.1f -> %s, "
+			Log("Coup sur %08X par %08X : %s%s%s%s, degats %.1f x%d, drapeaux %X, os %s (%s), force %.1f, charge %.1f -> %s, "
 				"poussee %.1f, %d corps pousses%s",
-				RefID(target), RefID(attacker), explosion ? "explosion" : melee ? "melee" : "tir", fatal ? " FATAL" : "",
+				RefID(target), RefID(attacker), explosion ? "explosion" : melee ? "melee" : "tir",
+				elem ? " de " : "", ElementName(elem), fatal ? " FATAL" : "",
 				dmg, pellets, flags, b[i].name ? b[i].name : "?", hk::MotionName(At<UInt8>(b[i].rb, hk::kMotionType)),
 				force, charge, reaction, push, pushed, deferred ? " (mis en attente du ragdoll de mort)"
 				: pushed ? "" : " (corps animes : le Ragdoll Feedback ne les a pas rendus dynamiques)");
+	}
+
+	// Etape 6 : PNJ vivants en feu ou electrocutes. Si le Ragdoll Feedback rend leurs corps dynamiques, les mains
+	// battent (feu) ou le haut du corps tremble (courant). Sinon il ne reste que le titubement du premier coup.
+	void UpdateLiving()
+	{
+		DWORD now = GetTickCount();
+		for (ActorState& s : g_states)
+		{
+			bool burning = s.burnUntil > now, shocked = s.shockUntil > now;
+			if (!s.refID || (!burning && !shocked)) continue;
+			void* ref = forms::LookupByID(s.refID);
+			if (!ref || !IsActor(ref) || KnockedState(ref) != 0) continue;
+			Body b[kMaxBodies];
+			int n = CollectBodies(ref, b);
+			if (burning && now >= s.nextFlail)
+			{
+				s.nextFlail = now + (DWORD)(g_cfg.flailTimer * 1000.f);
+				for (const char* limb : {"Bip01 L Forearm", "Bip01 R Forearm", "Bip01 L Hand", "Bip01 R Hand"})
+				{
+					int k = FindBody(b, n, limb);
+					if (k >= 0) ApplyImpulse(b[k].rb, RandomDir() * g_cfg.livingFlail, BodyCenter(b[k].rb));
+				}
+			}
+			if (shocked)
+			{
+				for (const char* part : {"Bip01 Spine2", "Bip01 Head", "Bip01 L UpperArm", "Bip01 R UpperArm"})
+				{
+					int k = FindBody(b, n, part);
+					if (k >= 0) ApplyImpulse(b[k].rb, RandomDir() * g_cfg.livingShake, BodyCenter(b[k].rb));
+				}
+			}
+		}
 	}
 
 	void OnHit(void* /*thisObj*/, void* parameters)
@@ -1028,6 +1217,8 @@ namespace
 				Log("ERREUR : exception %08X pendant une poussee differee", GetExceptionCode());
 				ClearPending();
 			}
+			__try { UpdateLiving(); }
+			__except (EXCEPTION_EXECUTE_HANDLER) { Log("ERREUR : exception %08X pendant feu / electricite", GetExceptionCode()); }
 			__try { UpdateMuscles(); }
 			__except (EXCEPTION_EXECUTE_HANDLER)
 			{

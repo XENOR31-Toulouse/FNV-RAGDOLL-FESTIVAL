@@ -2,7 +2,7 @@
 
 Plugin xNVSE pour Fallout New Vegas : les PNJ **vivants** réagissent physiquement aux coups. Le mod est autonome : il remplace le mod Ragdolls (ne pas les activer ensemble). Conception : [docs/00-conception.md](docs/00-conception.md).
 
-État : étapes 0 à 5 écrites et compilées, **pas encore testées en jeu**. Un PNJ touché tressaille, titube ou tombe selon la force des coups reçus ; à la mort, la poussée part de l'endroit touché et le corps garde son élan. Pendant une chute ou une mort, ses articulations se raidissent et ses mains se tendent pour se rattraper. En mourant, il peut porter la main à sa blessure, ou rester debout un instant avant que ses jambes cèdent.
+État : étapes 0 à 6 écrites et compilées, **pas encore testées en jeu**. Un PNJ touché tressaille, titube ou tombe selon la force des coups reçus ; à la mort, la poussée part de l'endroit touché et le corps garde son élan. Pendant une chute ou une mort, ses articulations se raidissent et ses mains se tendent pour se rattraper. En mourant, il peut porter la main à sa blessure, ou rester debout un instant avant que ses jambes cèdent. Dans le feu, il bat des bras et des jambes ; électrocuté, il tremble ; projeté par une explosion, ses bras tournent en moulinet pendant le vol.
 
 ## Prérequis
 
