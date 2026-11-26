@@ -19,8 +19,8 @@
 
 namespace
 {
-	constexpr UInt32 kPluginVersion = 2;            // pour xNVSE : entier qui augmente a chaque version publiee
-	constexpr const char* kVersionName = "0.2.0-alpha"; // pour les joueurs : version du paquet
+	constexpr UInt32 kPluginVersion = 3;            // pour xNVSE : entier qui augmente a chaque version publiee
+	constexpr const char* kVersionName = "0.3.0-alpha"; // pour les joueurs : version du paquet
 	constexpr const char* kPluginName = "NVReactiveRagdoll";
 
 	PluginHandle g_handle = 0xFFFFFFFF;
@@ -30,6 +30,7 @@ namespace
 	char g_iniPath[MAX_PATH] = {};
 	FILE* g_log = nullptr;
 	bool g_explosionReactions = false; // le mod Explosion Reactions est actif (etape 8)
+	float g_humanMass = 0.f;           // masse totale d'un squelette humain, mesuree au premier coup (etape 7)
 
 	// ------------------------------------------------------------------ journal
 	void Log(const char* fmt, ...)
@@ -120,6 +121,13 @@ namespace
 		float windmillSpeed = 8.f;
 		// [Compatibility] etape 8
 		bool yieldExplosionReactions = true;
+		// [Creatures] etape 7
+		bool creatures = true;
+		bool creatureStagger = true;
+		bool creatureKnockdown = true;
+		bool creatureMuscles = true;
+		bool massScaling = true;
+		float creatureThreshold = 1.0f;
 		// [RagdollAnim] reglages natifs du jeu
 		bool forceFeedback = true;
 	} g_cfg;
@@ -212,6 +220,12 @@ namespace
 		c.flyMinSpeed = IniFloat("Explosions", "fFlyMinSpeed", c.flyMinSpeed);
 		c.windmillSpeed = IniFloat("Explosions", "fWindmillSpeed", c.windmillSpeed);
 		c.yieldExplosionReactions = IniInt("Compatibility", "bYieldToExplosionReactions", 1) != 0;
+		c.creatures = IniInt("Creatures", "bEnabled", 1) != 0;
+		c.creatureStagger = IniInt("Creatures", "bStagger", 1) != 0;
+		c.creatureKnockdown = IniInt("Creatures", "bKnockdown", 1) != 0;
+		c.creatureMuscles = IniInt("Creatures", "bMuscles", 1) != 0;
+		c.massScaling = IniInt("Creatures", "bMassScaling", 1) != 0;
+		c.creatureThreshold = IniFloat("Creatures", "fThresholdMult", c.creatureThreshold);
 		c.forceFeedback = IniInt("RagdollAnim", "bRagdollFeedback", 1) != 0;
 		g_cfg = c;
 		IniWriteTime(g_iniTime);
@@ -415,6 +429,64 @@ namespace
 		return -1;
 	}
 
+	// Etape 7 : roles des os sur n'importe quel squelette (creatures comprises), pas seulement l'humain.
+	float MassOf(UInt8* rb) { float im = At<float>(rb, hk::kInvMass); return im > 0.f ? 1.f / im : 0.f; }
+
+	float TotalMass(const Body* b, int n)
+	{
+		float m = 0.f;
+		for (int k = 0; k < n; ++k) m += MassOf(b[k].rb);
+		return m;
+	}
+
+	// torse : Bip01 Spine2 chez l'humain ; sinon le corps le plus lourd (le tronc d'un chien, d'un deathclaw...)
+	int ChestOf(const Body* b, int n)
+	{
+		int i = FindBody(b, n, "Bip01 Spine2");
+		if (i >= 0) return i;
+		float best = -1.f;
+		for (int k = 0; k < n; ++k)
+			if (MassOf(b[k].rb) > best) { best = MassOf(b[k].rb); i = k; }
+		return i;
+	}
+
+	// bassin : Bip01 Pelvis ; sinon le corps racine (sans parent)
+	int PelvisOf(const Body* b, int n)
+	{
+		int i = FindBody(b, n, "Bip01 Pelvis");
+		if (i >= 0) return i;
+		for (int k = 0; k < n; ++k)
+			if (b[k].parent < 0) return k;
+		return -1;
+	}
+
+	bool HasChild(const Body* b, int n, int i)
+	{
+		for (int k = 0; k < n; ++k)
+			if (b[k].parent == i) return true;
+		return false;
+	}
+
+	// bouts des membres : corps sans enfant (mains, pieds, queue, tete...), hors torse
+	int LimbEnds(const Body* b, int n, int chest, int* out, int max)
+	{
+		int c = 0;
+		for (int k = 0; k < n && c < max; ++k)
+			if (k != chest && !HasChild(b, n, k)) out[c++] = k;
+		return c;
+	}
+
+	// racines des membres : enfants directs du torse ou du bassin (bras, cuisses, cou...)
+	int LimbRoots(const Body* b, int n, int chest, int pelvis, int* out, int max)
+	{
+		int c = 0;
+		for (int k = 0; k < n && c < max; ++k)
+			if (k != chest && k != pelvis && (b[k].parent == chest || b[k].parent == pelvis)) out[c++] = k;
+		return c;
+	}
+
+	bool IsHumanoid(const Body* b, int n) { return FindBody(b, n, "Bip01 L Hand") >= 0 && FindBody(b, n, "Bip01 R Hand") >= 0; }
+
 	// Pousse le corps i (part 1) et ses voisins directs, parent et enfants (part fNeighbourShare).
 	// Renvoie le nombre de corps effectivement pousses (0 si tout est anime).
 	int PushBodyAndNeighbours(const Body* b, int n, int i, V3 J, V3 p)
@@ -530,6 +602,7 @@ namespace
 	void StartMuscles(void* target, bool dying, V3 fallDir, const DeathStyle* death)
 	{
 		if (!g_cfg.muscles || (dying ? !g_cfg.musclesOnDeath : !g_cfg.musclesOnKnockdown)) return;
+		if (At<UInt8>(target, form::kTypeID) == form::kType_Creature && !g_cfg.creatureMuscles) return;
 		MuscleTask* slot = nullptr;
 		for (MuscleTask& m : g_muscles)
 		{
@@ -587,8 +660,10 @@ namespace
 
 		Body b[kMaxBodies];
 		int n = CollectBodies(m.ref, b);
-		int chest = FindBody(b, n, "Bip01 Spine2");
+		int chest = ChestOf(b, n);
 		if (chest < 0 || !hk::IsDynamic(At<UInt8>(b[chest].rb, hk::kMotionType))) return false; // plus de ragdoll
+		bool humanoid = IsHumanoid(b, n);
+		int pelvis = PelvisOf(b, n);
 
 		// force : pleine puis decroissante (a la mort elle decroit des le debut : les muscles lachent,
 		// apres le temps passe debout s'il y en a un)
@@ -608,10 +683,19 @@ namespace
 		{
 			m.nextFlail = now + (DWORD)(g_cfg.flailTimer * 1000.f);
 			for (V3& f : m.flail) f = Norm(RandomDir() + V3{0, 0, 0.6f});
-			for (const char* leg : {"Bip01 L Calf", "Bip01 R Calf"})
+			// humain : les mollets ; creature : le bout de chaque membre (pattes, queue, pinces...)
+			int kick[8];
+			int nk = 0;
+			if (humanoid)
 			{
-				int k = FindBody(b, n, leg);
-				if (k < 0 || !hk::IsDynamic(At<UInt8>(b[k].rb, hk::kMotionType))) continue;
+				for (const char* leg : {"Bip01 L Calf", "Bip01 R Calf"})
+					if ((kick[nk] = FindBody(b, n, leg)) >= 0) ++nk;
+			}
+			else nk = LimbEnds(b, n, chest, kick, 8);
+			for (int j = 0; j < nk; ++j)
+			{
+				int k = kick[j];
+				if (!hk::IsDynamic(At<UInt8>(b[k].rb, hk::kMotionType))) continue;
 				AddAngVel(b[k].rb, RandomDir() * (g_cfg.fireLegKick * strength));
 				touched[k] = true;
 			}
@@ -634,14 +718,28 @@ namespace
 		if (flying)
 		{
 			V3 axis = Norm(Cross(m.fallDir, V3{0, 0, 1}));
-			const char* limbs[4] = {"Bip01 L UpperArm", "Bip01 R UpperArm", "Bip01 L Thigh", "Bip01 R Thigh"};
-			const float spin[4] = {1.f, 1.f, 1.f, -1.f};
+			// humain : bras et cuisses ; creature : chaque membre qui part du tronc, un sur deux en sens inverse
+			int limb[8];
+			float spin[8];
+			int nl = 0;
+			if (humanoid)
+			{
+				const char* names[4] = {"Bip01 L UpperArm", "Bip01 R UpperArm", "Bip01 L Thigh", "Bip01 R Thigh"};
+				const float dirs[4] = {1.f, 1.f, 1.f, -1.f};
+				for (int l = 0; l < 4; ++l)
+					if ((limb[nl] = FindBody(b, n, names[l])) >= 0) spin[nl++] = dirs[l];
+			}
+			else
+			{
+				nl = LimbRoots(b, n, chest, pelvis, limb, 8);
+				for (int l = 0; l < nl; ++l) spin[l] = (l & 1) ? -1.f : 1.f;
+			}
 			UInt8* c = b[chest].rb;
 			float ic = InvInertia(c);
-			for (int l = 0; l < 4; ++l)
+			for (int l = 0; l < nl; ++l)
 			{
-				int k = FindBody(b, n, limbs[l]);
-				if (k < 0 || !hk::IsDynamic(At<UInt8>(b[k].rb, hk::kMotionType))) continue;
+				int k = limb[l];
+				if (!hk::IsDynamic(At<UInt8>(b[k].rb, hk::kMotionType))) continue;
 				V3 want = axis * (g_cfg.windmillSpeed * spin[l]);
 				V3 rel = Load3(b[k].rb, hk::kAngVelocity) - Load3(c, hk::kAngVelocity);
 				V3 dw = (want - rel) * (0.2f * strength);
@@ -658,10 +756,9 @@ namespace
 		{
 			float support = g_cfg.standSupport * (1.f - age / standT);
 			V3 lift = GravityOf(b[chest].rb) * (-support * dt);
-			int pelvis = FindBody(b, n, "Bip01 Pelvis");
 			AddLinVel(b[chest].rb, lift);
 			touched[chest] = true;
-			if (pelvis >= 0 && hk::IsDynamic(At<UInt8>(b[pelvis].rb, hk::kMotionType)))
+			if (pelvis >= 0 && pelvis != chest && hk::IsDynamic(At<UInt8>(b[pelvis].rb, hk::kMotionType)))
 			{
 				AddLinVel(b[pelvis].rb, lift);
 				touched[pelvis] = true;
@@ -932,6 +1029,26 @@ namespace
 	}
 
 	// ------------------------------------------------------------------ reaction a un coup
+	// Etape 7 : decrit une fois le squelette de chaque type de creature (forme de base) : nombre de corps, masse,
+	// torse retenu, et les noms des os physiques.
+	void LogCreatureSkeleton(void* ref, const Body* b, int n, float mass)
+	{
+		static UInt32 seen[64] = {};
+		static int count = 0;
+		UInt32 base = RefID(At<void*>(ref, refr::kBaseForm));
+		for (int k = 0; k < count; ++k)
+			if (seen[k] == base) return;
+		if (count < 64) seen[count++] = base;
+		char names[512];
+		int len = 0;
+		names[0] = 0;
+		for (int k = 0; k < n && len < (int)sizeof(names) - 40; ++k)
+			len += snprintf(names + len, sizeof(names) - len, "%s%s", k ? ", " : "", b[k].name ? b[k].name : "?");
+		int chest = ChestOf(b, n);
+		Log("Creature %08X : %d corps, masse %.1f (humain %.1f), torse %s, %s : %s", base, n, mass, g_humanMass,
+			chest >= 0 && b[chest].name ? b[chest].name : "?", IsHumanoid(b, n) ? "humanoide" : "non humanoide", names);
+	}
+
 	// Element du coup : par la resistance de l'arme (feu, electricite, IEM), sinon par le type du projectile (flamme)
 	int ElementOf(void* weapon, void* proj, void* attacker, bool explosion)
 	{
@@ -959,17 +1076,37 @@ namespace
 		int n = CollectBodies(target, b);
 		if (!n) return;
 
-		// etape 8 : le squelette humain doit porter ses corps physiques (NV Compatibility Skeleton en a 18)
+		bool creature = At<UInt8>(target, form::kTypeID) == form::kType_Creature;
+		float mass = TotalMass(b, n);
+
+		// etape 8 : le squelette humain doit porter ses corps physiques (NV Compatibility Skeleton en a 18).
+		// Sa masse sert de reference pour les creatures (etape 7).
 		static bool skeletonChecked = false;
-		if (!skeletonChecked && At<UInt8>(target, form::kTypeID) == form::kType_Character)
+		if (!skeletonChecked && !creature)
 		{
 			skeletonChecked = true;
 			if (n < 15 || FindBody(b, n, "Bip01 Spine2") < 0)
-				Log("ATTENTION : le squelette humain n'a que %d corps physiques (18 attendus avec NV Compatibility Skeleton). "
+				Log("ATTENTION : le premier PNJ touche n'a que %d corps physiques (18 attendus avec NV Compatibility Skeleton). "
 					"Un autre squelette l'ecrase peut-etre : charge NV Compatibility Skeleton en dernier.", n);
 			else
-				Log("Squelette humain : %d corps physiques, ok", n);
+			{
+				g_humanMass = mass;
+				Log("Squelette humain : %d corps physiques, masse %.1f, ok", n, mass);
+			}
 		}
+
+		// etape 7 : chaque type de creature est decrit une fois dans le journal (utile pour regler)
+		if (creature) LogCreatureSkeleton(target, b, n, mass);
+
+		// taille : les seuils de titubement et de chute suivent la masse (un deathclaw ne tombe pas comme un rat-taupe)
+		float size = 1.f;
+		if (g_cfg.massScaling && g_humanMass > 0.f && mass > 0.f)
+		{
+			size = sqrtf(mass / g_humanMass);
+			if (size < 0.5f) size = 0.5f;
+			if (size > 3.f) size = 3.f;
+		}
+		float thresholdMult = size * (creature ? g_cfg.creatureThreshold : 1.f);
 
 		UInt32 flags = At<UInt32>(hd, hit::kFlags);
 		float dmg = At<float>(hd, hit::kHealthDmg);
@@ -983,7 +1120,7 @@ namespace
 
 		// corps touche : le plus proche du point d'impact, sinon le torse
 		int i = hasImpact ? NearestBody(b, n, impact * hk::kGameToHavok) : -1;
-		if (i < 0) i = FindBody(b, n, "Bip01 Spine2");
+		if (i < 0) i = ChestOf(b, n);
 		if (i < 0) i = 0;
 		V3 p = hasImpact ? impact * hk::kGameToHavok : BodyCenter(b[i].rb);
 
@@ -1017,6 +1154,10 @@ namespace
 		if (explosion && g_explosionReactions && g_cfg.yieldExplosionReactions) standing = false;
 		const char* reaction = "tressaille";
 		V3 carry = MoveVelocity(target) * g_cfg.carryVelocity;
+		float staggerAt = g_cfg.staggerAt * thresholdMult;
+		float knockAt = g_cfg.knockAt * thresholdMult;
+		bool canStagger = g_cfg.stagger && (!creature || g_cfg.creatureStagger);
+		bool canKnock = g_cfg.knockdown && (!creature || g_cfg.creatureKnockdown);
 
 		// etape 6 : en feu ou electrocute pour un moment ; le premier coup de feu ou de courant fait tituber
 		DWORD now = GetTickCount();
@@ -1041,7 +1182,7 @@ namespace
 			float limit = head ? 0.5f : 1.f; // un tir a la tete tue net plus facilement
 			float total = dmg * pellets;
 			bool muscles = g_cfg.muscles && g_cfg.musclesOnDeath && !elem; // la facon de mourir passe par les muscles
-			if (muscles && g_cfg.grab && !explosion && total < g_cfg.grabMaxDamage * limit && Chance(g_cfg.grabChance))
+			if (muscles && g_cfg.grab && !explosion && IsHumanoid(b, n) && total < g_cfg.grabMaxDamage * limit && Chance(g_cfg.grabChance))
 			{
 				ds.grab = true;
 				snprintf(ds.wound, sizeof(ds.wound), "%s", bone);
@@ -1062,19 +1203,19 @@ namespace
 			else if (elem == kElem_Shock) reaction = "meurt electrocute";
 			else if (explosion) reaction = "meurt, projete";
 		}
-		else if (standing && g_cfg.knockdown && charge >= g_cfg.knockAt)
+		else if (standing && canKnock && charge >= knockAt)
 		{
-			float scale = charge / g_cfg.knockAt;
+			float scale = charge / knockAt;
 			if (scale > g_cfg.knockForceMax) scale = g_cfg.knockForceMax;
 			void* srcRef = explosion && proj ? proj : attacker;
 			V3 srcGame = srcRef ? Load3(srcRef, refr::kPos) : (p - dir) * 7.f;
-			KnockDown(target, srcGame, g_cfg.knockForce * scale * (explosion ? g_cfg.explosionKnockMult : 1.f));
+			KnockDown(target, srcGame, g_cfg.knockForce * scale * size * (explosion ? g_cfg.explosionKnockMult : 1.f));
 			// le ragdoll commence une image plus tard : poussee au point touche et elan, des qu'il est dynamique
 			QueuePush(target, "Chute", b[i].name, dir * (push * g_cfg.knockLocalShare), p - BodyCenter(b[i].rb), carry, &ds);
 			st.charge = 0.f;
 			reaction = explosion ? "tombe, projete" : "tombe";
 		}
-		else if (standing && g_cfg.stagger && (charge >= g_cfg.staggerAt || elemStagger) && g_staggerGroup != 0xFFFFFFFF
+		else if (standing && canStagger && (charge >= staggerAt || elemStagger) && g_staggerGroup != 0xFFFFFFFF
 			&& GetTickCount() - st.lastStagger > (DWORD)(g_cfg.staggerCooldown * 1000.f))
 		{
 			if (PlayAnimGroup(target, g_staggerGroup)) { st.lastStagger = GetTickCount(); reaction = "titube"; }
@@ -1090,12 +1231,12 @@ namespace
 			StartMuscles(target, true, carry + dir, &ds);
 		}
 		if (g_cfg.verbose)
-			Log("Coup sur %08X par %08X : %s%s%s%s, degats %.1f x%d, drapeaux %X, os %s (%s), force %.1f, charge %.1f -> %s, "
-				"poussee %.1f, %d corps pousses%s",
-				RefID(target), RefID(attacker), explosion ? "explosion" : melee ? "melee" : "tir",
+			Log("Coup sur %s %08X par %08X : %s%s%s%s, degats %.1f x%d, drapeaux %X, os %s (%s), force %.1f, "
+				"charge %.1f (seuils %.0f / %.0f, taille %.2f) -> %s, poussee %.1f, %d corps pousses%s",
+				creature ? "creature" : "PNJ", RefID(target), RefID(attacker), explosion ? "explosion" : melee ? "melee" : "tir",
 				elem ? " de " : "", ElementName(elem), fatal ? " FATAL" : "",
 				dmg, pellets, flags, b[i].name ? b[i].name : "?", hk::MotionName(At<UInt8>(b[i].rb, hk::kMotionType)),
-				force, charge, reaction, push, pushed, deferred ? " (mis en attente du ragdoll de mort)"
+				force, charge, staggerAt, knockAt, size, reaction, push, pushed, deferred ? " (mis en attente du ragdoll de mort)"
 				: pushed ? "" : " (corps animes : le Ragdoll Feedback ne les a pas rendus dynamiques)");
 	}
 
@@ -1115,19 +1256,27 @@ namespace
 			if (burning && now >= s.nextFlail)
 			{
 				s.nextFlail = now + (DWORD)(g_cfg.flailTimer * 1000.f);
-				for (const char* limb : {"Bip01 L Forearm", "Bip01 R Forearm", "Bip01 L Hand", "Bip01 R Hand"})
+				// humain : avant-bras et mains ; creature : le bout de chaque membre
+				int ends[8];
+				int ne = 0;
+				if (IsHumanoid(b, n))
 				{
-					int k = FindBody(b, n, limb);
-					if (k >= 0) ApplyImpulse(b[k].rb, RandomDir() * g_cfg.livingFlail, BodyCenter(b[k].rb));
+					for (const char* limb : {"Bip01 L Forearm", "Bip01 R Forearm", "Bip01 L Hand", "Bip01 R Hand"})
+						if ((ends[ne] = FindBody(b, n, limb)) >= 0) ++ne;
 				}
+				else ne = LimbEnds(b, n, ChestOf(b, n), ends, 8);
+				for (int j = 0; j < ne; ++j)
+					ApplyImpulse(b[ends[j]].rb, RandomDir() * g_cfg.livingFlail, BodyCenter(b[ends[j]].rb));
 			}
 			if (shocked)
 			{
-				for (const char* part : {"Bip01 Spine2", "Bip01 Head", "Bip01 L UpperArm", "Bip01 R UpperArm"})
-				{
-					int k = FindBody(b, n, part);
-					if (k >= 0) ApplyImpulse(b[k].rb, RandomDir() * g_cfg.livingShake, BodyCenter(b[k].rb));
-				}
+				// torse et racines des membres (tete et bras chez l'humain)
+				int chest = ChestOf(b, n);
+				int parts[9];
+				int np = LimbRoots(b, n, chest, PelvisOf(b, n), parts, 8);
+				if (chest >= 0) parts[np++] = chest;
+				for (int j = 0; j < np; ++j)
+					ApplyImpulse(b[parts[j]].rb, RandomDir() * g_cfg.livingShake, BodyCenter(b[parts[j]].rb));
 			}
 		}
 	}
@@ -1151,6 +1300,7 @@ namespace
 			}
 			if (!IsActor(target)) return;
 			if (target == Player() && !g_cfg.reactPlayer) return;
+			if (At<UInt8>(target, form::kTypeID) == form::kType_Creature && !g_cfg.creatures) return;
 			React(target, attacker);
 		}
 		__except (EXCEPTION_EXECUTE_HANDLER)
@@ -1187,7 +1337,7 @@ namespace
 		Body b[kMaxBodies];
 		int n = CollectBodies(target, b);
 		if (!n) { Log("F7 : aucun corps physique sur %08X", RefID(target)); return; }
-		int i = FindBody(b, n, "Bip01 Spine2");
+		int i = ChestOf(b, n);
 		if (i < 0) i = 0;
 		V3 p = BodyCenter(b[i].rb);
 		V3 from = Load3(Player(), refr::kPos) * hk::kGameToHavok;

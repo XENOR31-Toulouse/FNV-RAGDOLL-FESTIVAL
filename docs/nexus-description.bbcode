@@ -1,7 +1,7 @@
 [center][size=6][b]NV Reactive Ragdoll[/b][/size]
 [size=3]Physics-driven hit reactions for living NPCs - an xNVSE plugin[/size][/center]
 
-[color=#ff9900][b]ALPHA 0.2.0 - public test build. Please send your NVReactiveRagdoll.log with any report.[/b][/color]
+[color=#ff9900][b]ALPHA 0.3.0 - public test build. Please send your NVReactiveRagdoll.log with any report.[/b][/color]
 
 [size=4][b]What it does[/b][/size]
 NPCs react to hits with their own Havok ragdoll instead of only canned animations. Inspired by recent physics mods for Skyrim (Delirium, Precision, PLANCK) and by MadAce's Ragdolls for New Vegas, which it replaces.
@@ -32,11 +32,11 @@ Install with your mod manager. Disable [b]Ragdolls[/b] (this mod replaces it). N
 [*][b]Explosion Reactions[/b] - detected: living NPCs hit by an explosion are left to its animations (configurable).
 [*][b]Awesome / Dramatic Staggering[/b] - fine: they replace the game's hit animations, this mod adds physics on top.
 [*]Other stagger mods - if NPCs stagger twice, set bStagger=0.
-[*]Creatures - basic support only (flinch, knockdown, deaths). Dedicated creature skeletons are planned.
+[*]Creatures - all of them react, on their own skeleton: no list to maintain, creature mods work too. Bigger creatures need harder hits to stagger or fall. Vanilla creature ragdolls are used (no retuned creature skeletons yet).
 [/list]
 
 [size=4][b]Settings[/b][/size]
-In game: pause menu, Mod Configuration, [b]NV Reactive Ragdoll[/b] (6 pages, 51 options; needs [url=https://www.nexusmods.com/newvegas/mods/42507]MCM[/url] and [url=https://www.nexusmods.com/newvegas/mods/93642]MCM Extender[/url], no plugin file). Changes apply when you close the pause menu.
+In game: pause menu, Mod Configuration, [b]NV Reactive Ragdoll[/b] (7 pages, 57 options; needs [url=https://www.nexusmods.com/newvegas/mods/42507]MCM[/url] and [url=https://www.nexusmods.com/newvegas/mods/93642]MCM Extender[/url], no plugin file). Changes apply when you close the pause menu.
 Or edit Data\Config\NVReactiveRagdoll.ini, re-read as soon as it changes. Every reaction can be tuned or turned off. Debug keys: F8 lists the physics bodies of the NPC under the crosshair, F7 pushes it.
 
 [size=4][b]Source and credits[/b][/size]

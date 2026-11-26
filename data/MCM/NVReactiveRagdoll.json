@@ -708,6 +708,92 @@
             }
         },
         "6": {
+            "listTitle": "Creatures",
+            "pageTitle": "Creatures",
+            "columns": 1,
+            "enable": 1,
+            "options": {
+                "1": {
+                    "title": "Creatures actives",
+                    "enable": 1,
+                    "mouse": "Les creatures reagissent aussi aux coups.",
+                    "vars": [
+                        {
+                            "configINI": "Creatures:bEnabled",
+                            "default": 1
+                        }
+                    ],
+                    "type": 5
+                },
+                "2": {
+                    "title": "Creatures : tituber",
+                    "enable": 1,
+                    "mouse": "Les creatures peuvent tituber.",
+                    "vars": [
+                        {
+                            "configINI": "Creatures:bStagger",
+                            "default": 1
+                        }
+                    ],
+                    "type": 5
+                },
+                "3": {
+                    "title": "Creatures : tomber",
+                    "enable": 1,
+                    "mouse": "Les creatures peuvent etre renversees.",
+                    "vars": [
+                        {
+                            "configINI": "Creatures:bKnockdown",
+                            "default": 1
+                        }
+                    ],
+                    "type": 5
+                },
+                "4": {
+                    "title": "Creatures : muscles",
+                    "enable": 1,
+                    "mouse": "Raideur et gestes pendant la chute et la mort.",
+                    "vars": [
+                        {
+                            "configINI": "Creatures:bMuscles",
+                            "default": 1
+                        }
+                    ],
+                    "type": 5
+                },
+                "5": {
+                    "title": "Seuils selon la masse",
+                    "enable": 1,
+                    "mouse": "Les grosses creatures (et super mutants) tiennent mieux debout.",
+                    "vars": [
+                        {
+                            "configINI": "Creatures:bMassScaling",
+                            "default": 1
+                        }
+                    ],
+                    "type": 5
+                },
+                "6": {
+                    "title": "Creatures : seuils",
+                    "enable": 1,
+                    "mouse": "Multiplicateur des seuils de titubement et de chute des creatures.",
+                    "vars": [
+                        {
+                            "configINI": "Creatures:fThresholdMult",
+                            "default": 1.0
+                        }
+                    ],
+                    "type": 2.5,
+                    "scale": {
+                        "valueDecimal": 1,
+                        "valueIncrement": 0.1,
+                        "valueMin": 0.2,
+                        "valueMax": 5
+                    }
+                }
+            }
+        },
+        "7": {
             "listTitle": "Feu, courant, explosions",
             "pageTitle": "Feu, courant, explosions",
             "columns": 1,

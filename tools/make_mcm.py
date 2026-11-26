@@ -70,6 +70,14 @@ PAGES = [
         ("Muscles", "fArmPull", "Force des bras", "Force qui tend les mains pour se rattraper.", "int", 0, 100, 1),
         ("Muscles", "fArmDamping", "Amortissement des bras", "Plus haut = bras plus calmes.", "float", 0, 30, 0.5),
     ]),
+    ("Creatures", [
+        ("Creatures", "bEnabled", "Creatures actives", "Les creatures reagissent aussi aux coups.", "bool"),
+        ("Creatures", "bStagger", "Creatures : tituber", "Les creatures peuvent tituber.", "bool"),
+        ("Creatures", "bKnockdown", "Creatures : tomber", "Les creatures peuvent etre renversees.", "bool"),
+        ("Creatures", "bMuscles", "Creatures : muscles", "Raideur et gestes pendant la chute et la mort.", "bool"),
+        ("Creatures", "bMassScaling", "Seuils selon la masse", "Les grosses creatures (et super mutants) tiennent mieux debout.", "bool"),
+        ("Creatures", "fThresholdMult", "Creatures : seuils", "Multiplicateur des seuils de titubement et de chute des creatures.", "float", 0.2, 5, 0.1),
+    ]),
     ("Feu, courant, explosions", [
         ("Fire", "fBurnTime", "Feu : duree (vivant)", "En secondes apres le dernier coup de feu.", "float", 0, 10, 0.1),
         ("Fire", "fDeathTime", "Feu : duree (mort ou chute)", "Bras qui tapent les flammes, en secondes.", "float", 0, 10, 0.1),
