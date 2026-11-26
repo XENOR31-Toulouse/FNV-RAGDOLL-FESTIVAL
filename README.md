@@ -2,7 +2,7 @@
 
 Plugin xNVSE pour Fallout New Vegas : les PNJ **vivants** réagissent physiquement aux coups. Le mod est autonome : il remplace le mod Ragdolls (ne pas les activer ensemble). Conception : [docs/00-conception.md](docs/00-conception.md).
 
-État : étapes 0 à 6 écrites et compilées, **pas encore testées en jeu**. Un PNJ touché tressaille, titube ou tombe selon la force des coups reçus ; à la mort, la poussée part de l'endroit touché et le corps garde son élan. Pendant une chute ou une mort, ses articulations se raidissent et ses mains se tendent pour se rattraper. En mourant, il peut porter la main à sa blessure, ou rester debout un instant avant que ses jambes cèdent. Dans le feu, il bat des bras et des jambes ; électrocuté, il tremble ; projeté par une explosion, ses bras tournent en moulinet pendant le vol.
+État : version 0.1.0-alpha, étapes 0 à 6 et 8 écrites et compilées (l'étape 7, créatures, reste à faire), **pas encore testées en jeu**. Un PNJ touché tressaille, titube ou tombe selon la force des coups reçus ; à la mort, la poussée part de l'endroit touché et le corps garde son élan. Pendant une chute ou une mort, ses articulations se raidissent et ses mains se tendent pour se rattraper. En mourant, il peut porter la main à sa blessure, ou rester debout un instant avant que ses jambes cèdent. Dans le feu, il bat des bras et des jambes ; électrocuté, il tremble ; projeté par une explosion, ses bras tournent en moulinet pendant le vol.
 
 ## Prérequis
 
@@ -17,6 +17,21 @@ build.cmd
 ```
 
 Le script produit `build\NVReactiveRagdoll.dll` (32 bits), le copie avec le .ini dans `dist\Data\NVSE\Plugins\`, et dans le mod Mod Organizer `NV Reactive Ragdoll (dev)` s'il existe. Le .ini du mod MO2 n'est jamais écrasé : tes réglages restent.
+
+## Faire le paquet à publier
+
+```
+package.cmd
+```
+
+Compile, puis crée `dist\NVReactiveRagdoll-<version>.zip` (racine = dossier Data : `NVSE\Plugins\` avec la DLL, le .ini et la licence). La version vient de `kVersionName` dans `src\main.cpp`. La description pour Nexus est dans [docs/nexus-description.bbcode](docs/nexus-description.bbcode).
+
+## Compatibilité
+
+- **Ragdolls** : à désactiver, ce mod le remplace. Le journal prévient s'il est actif.
+- **Explosion Reactions** : détecté ; les PNJ vivants touchés par une explosion lui sont laissés (`bYieldToExplosionReactions` dans `[Compatibility]`).
+- **Awesome / Dramatic Staggering** : compatibles, ils ne remplacent que les animations de coup du jeu.
+- **Squelette** : au premier coup sur un humain, le journal vérifie qu'il porte bien ses corps physiques (18 avec NV Compatibility Skeleton).
 
 ## Tester en jeu
 

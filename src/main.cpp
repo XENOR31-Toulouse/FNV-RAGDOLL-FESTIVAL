@@ -19,7 +19,8 @@
 
 namespace
 {
-	constexpr UInt32 kPluginVersion = 1;
+	constexpr UInt32 kPluginVersion = 1;            // pour xNVSE : entier qui augmente a chaque version publiee
+	constexpr const char* kVersionName = "0.1.0-alpha"; // pour les joueurs : version du paquet
 	constexpr const char* kPluginName = "NVReactiveRagdoll";
 
 	PluginHandle g_handle = 0xFFFFFFFF;
@@ -28,6 +29,7 @@ namespace
 	char g_gameDir[MAX_PATH] = {};
 	char g_iniPath[MAX_PATH] = {};
 	FILE* g_log = nullptr;
+	bool g_explosionReactions = false; // le mod Explosion Reactions est actif (etape 8)
 
 	// ------------------------------------------------------------------ journal
 	void Log(const char* fmt, ...)
@@ -116,6 +118,8 @@ namespace
 		float flyTime = 1.2f;
 		float flyMinSpeed = 3.f;
 		float windmillSpeed = 8.f;
+		// [Compatibility] etape 8
+		bool yieldExplosionReactions = true;
 		// [RagdollAnim] reglages natifs du jeu
 		bool forceFeedback = true;
 	} g_cfg;
@@ -194,6 +198,7 @@ namespace
 		c.flyTime = IniFloat("Explosions", "fFlyTime", c.flyTime);
 		c.flyMinSpeed = IniFloat("Explosions", "fFlyMinSpeed", c.flyMinSpeed);
 		c.windmillSpeed = IniFloat("Explosions", "fWindmillSpeed", c.windmillSpeed);
+		c.yieldExplosionReactions = IniInt("Compatibility", "bYieldToExplosionReactions", 1) != 0;
 		c.forceFeedback = IniInt("RagdollAnim", "bRagdollFeedback", 1) != 0;
 		g_cfg = c;
 		Log("Reglages lus : %s (%s)", g_iniPath,
@@ -928,6 +933,18 @@ namespace
 		int n = CollectBodies(target, b);
 		if (!n) return;
 
+		// etape 8 : le squelette humain doit porter ses corps physiques (NV Compatibility Skeleton en a 18)
+		static bool skeletonChecked = false;
+		if (!skeletonChecked && At<UInt8>(target, form::kTypeID) == form::kType_Character)
+		{
+			skeletonChecked = true;
+			if (n < 15 || FindBody(b, n, "Bip01 Spine2") < 0)
+				Log("ATTENTION : le squelette humain n'a que %d corps physiques (18 attendus avec NV Compatibility Skeleton). "
+					"Un autre squelette l'ecrase peut-etre : charge NV Compatibility Skeleton en dernier.", n);
+			else
+				Log("Squelette humain : %d corps physiques, ok", n);
+		}
+
 		UInt32 flags = At<UInt32>(hd, hit::kFlags);
 		float dmg = At<float>(hd, hit::kHealthDmg);
 		void* proj = At<void*>(hd, hit::kProjectile);
@@ -970,6 +987,8 @@ namespace
 		float charge = AddCharge(st, force);
 		SInt32 knocked = KnockedState(target);
 		bool standing = knocked == 0 && IsHighProcess(target) && target != Player();
+		// Explosion Reactions joue deja ses animations sur un vivant touche par une explosion : on lui laisse la place
+		if (explosion && g_explosionReactions && g_cfg.yieldExplosionReactions) standing = false;
 		const char* reaction = "tressaille";
 		V3 carry = MoveVelocity(target) * g_cfg.carryVelocity;
 
@@ -1177,13 +1196,24 @@ namespace
 	}
 
 	// ------------------------------------------------------------------ messages NVSE
-	void CheckRagdollsMod()
+	bool DataFileExists(const char* relative)
 	{
 		char path[MAX_PATH];
-		snprintf(path, sizeof(path), "%sData\\Ragdolls.esm", g_gameDir);
-		if (GetFileAttributesA(path) != INVALID_FILE_ATTRIBUTES)
+		snprintf(path, sizeof(path), "%sData\\%s", g_gameDir, relative);
+		return GetFileAttributesA(path) != INVALID_FILE_ATTRIBUTES;
+	}
+
+	// Etape 8 : mods qui font le meme travail. Sous Mod Organizer, seuls les mods actives sont visibles dans Data.
+	void CheckOtherMods()
+	{
+		if (DataFileExists("Ragdolls.esm"))
 			Log("ATTENTION : Ragdolls.esm est present. Ce mod le remplace : desactive Ragdolls pour eviter deux reactions "
-				"et deux reglages du Ragdoll Feedback.");
+				"a la mort et deux reglages du Ragdoll Feedback.");
+		g_explosionReactions = DataFileExists("NVSE\\Plugins\\Scripts\\ln_ExplosionReactions.txt");
+		if (g_explosionReactions)
+			Log("Explosion Reactions detecte : %s", g_cfg.yieldExplosionReactions
+				? "les PNJ vivants touches par une explosion jouent ses animations, sans titubement ni chute de notre part"
+				: "bYieldToExplosionReactions=0 : nos titubements et chutes s'ajoutent aux siennes");
 	}
 
 	void OnMessage(NVSEMessagingInterface::Message* msg)
@@ -1199,7 +1229,7 @@ namespace
 		case NVSEMessagingInterface::kMessage_DeferredInit:
 			Log("Reglages natifs [RagdollAnim] (avant -> apres) :");
 			ApplyGameSettings();
-			CheckRagdollsMod();
+			CheckOtherMods();
 			__try { FindAnimGroups(); }
 			__except (EXCEPTION_EXECUTE_HANDLER) { Log("ERREUR : table des groupes d'animation illisible"); }
 			break;
@@ -1249,7 +1279,7 @@ extern "C"
 		g_log = _fsopen(logPath, "w", _SH_DENYWR);
 		snprintf(g_iniPath, sizeof(g_iniPath), "%sData\\NVSE\\Plugins\\NVReactiveRagdoll.ini", g_gameDir);
 
-		Log("NV Reactive Ragdoll v%u, xNVSE %08X, jeu %08X", kPluginVersion, nvse->nvseVersion, nvse->runtimeVersion);
+		Log("NV Reactive Ragdoll %s, xNVSE %08X, jeu %08X", kVersionName, nvse->nvseVersion, nvse->runtimeVersion);
 		srand(GetTickCount());
 		LoadConfig();
 

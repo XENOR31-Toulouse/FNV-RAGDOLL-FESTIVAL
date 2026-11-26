@@ -1,0 +1,46 @@
+[center][size=6][b]NV Reactive Ragdoll[/b][/size]
+[size=3]Physics-driven hit reactions for living NPCs - an xNVSE plugin[/size][/center]
+
+[color=#ff9900][b]ALPHA 0.1.0 - first public test build. Please send your NVReactiveRagdoll.log with any report.[/b][/color]
+
+[size=4][b]What it does[/b][/size]
+NPCs react to hits with their own Havok ragdoll instead of only canned animations. Inspired by recent physics mods for Skyrim (Delirium, Precision, PLANCK) and by MadAce's Ragdolls for New Vegas, which it replaces.
+
+[list]
+[*][b]Flinch[/b] - every hit pushes the bone that was struck, at the impact point, plus its neighbours.
+[*][b]Stagger and knockdown[/b] - hits build up a per-NPC "charge" that fades over time. A pistol shot makes them flinch, a burst or a rifle round makes them stagger, a point-blank shotgun blast or a power attack knocks them down. The game gets them back up.
+[*][b]Momentum[/b] - a running NPC keeps its speed when it falls or dies.
+[*][b]Muscles[/b] - while falling, joints tense up, the neck stays stiff and the hands reach out to break the fall.
+[*][b]Deaths[/b] - the killing shot pushes from where it hit. NPCs may clutch the wound, or stay on their feet for a moment before their legs give way.
+[*][b]Fire[/b] - burning NPCs beat at the flames and kick. [b]Electricity[/b] - shocked NPCs shake. [b]Explosions[/b] - thrown NPCs windmill their arms and pedal in the air, then reach out to land.
+[*]Fire and electricity are detected from the weapon's damage type and projectile: weapons from other mods work without patches.
+[/list]
+
+[size=4][b]Requirements[/b][/size]
+[list]
+[*]Fallout: New Vegas 1.4.0.525 (TTW should work: same game executable, not tested yet)
+[*][url=https://github.com/xNVSE/NVSE/releases]xNVSE[/url] 6.1 or newer
+[*][url=https://www.nexusmods.com/newvegas/mods/68776]NV Compatibility Skeleton[/url] (load it last among skeleton mods)
+[/list]
+
+[size=4][b]Installation[/b][/size]
+Install with your mod manager. Disable [b]Ragdolls[/b] (this mod replaces it). No plugin file, nothing to put in the load order.
+
+[size=4][b]Compatibility[/b][/size]
+[list]
+[*][b]Ragdolls[/b] - do not use together (double death reactions). The log warns you if it is active.
+[*][b]Explosion Reactions[/b] - detected: living NPCs hit by an explosion are left to its animations (configurable).
+[*][b]Awesome / Dramatic Staggering[/b] - fine: they replace the game's hit animations, this mod adds physics on top.
+[*]Other stagger mods - if NPCs stagger twice, set bStagger=0.
+[*]Creatures - basic support only (flinch, knockdown, deaths). Dedicated creature skeletons are planned.
+[/list]
+
+[size=4][b]Settings[/b][/size]
+Data\NVSE\Plugins\NVReactiveRagdoll.ini, re-read on every save load. Every reaction can be tuned or turned off. Debug keys: F8 lists the physics bodies of the NPC under the crosshair, F7 pushes it.
+
+[size=4][b]Source and credits[/b][/size]
+GPL-3.0, source on [url=https://github.com/XENOR31-Toulouse/FNV-RAGDOLL-FESTIVAL]GitHub[/url].
+Game structure offsets from [b]JIP LN NVSE[/b] (jazzisparis, GPL-3) and [b]xNVSE[/b]. Design ideas from [b]Skyrim Delirium[/b] (GPL-3), [b]Precision[/b], [b]PLANCK[/b] and [b]Ragdolls[/b] by MadAce.
+
+[size=4][b]Français[/b][/size]
+Réactions physiques des PNJ vivants aux coups : ils tressaillent, titubent, tombent, se protègent en tombant, portent la main à leur blessure, battent des bras dans le feu, tremblent électrocutés. Remplace le mod Ragdolls. Nécessite xNVSE et NV Compatibility Skeleton. Réglages dans NVReactiveRagdoll.ini.
