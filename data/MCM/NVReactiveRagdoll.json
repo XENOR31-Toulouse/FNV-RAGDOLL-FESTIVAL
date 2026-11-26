@@ -88,66 +88,66 @@
             "active": 1
         },
         "2": {
-            "listTitle": "Hollywood",
-            "pageTitle": "Hollywood",
+            "listTitle": "Agonie debout",
+            "pageTitle": "Agonie debout",
             "columns": 1,
             "enable": 1,
             "options": {
                 "1": {
-                    "title": "Morts de cinema",
+                    "title": "Agonie debout",
                     "enable": 1,
-                    "mouse": "Exagere : tue d'une balle dans la tete, il reste debout, titube, puis tombe.",
+                    "mouse": "A sa mort, il essaie de tenir debout, fait des pas, encaisse, puis ses jambes cedent.",
                     "vars": [
                         {
-                            "configINI": "Hollywood:bEnabled",
+                            "configINI": "Balance:bEnabled",
                             "default": 1
                         }
                     ],
                     "type": 5
                 },
                 "2": {
-                    "title": "Chance : tir a la tete",
+                    "title": "Duree minimum",
                     "enable": 1,
-                    "mouse": "Chance d'une mort de cinema pour un tir mortel a la tete.",
+                    "mouse": "Secondes debout, au moins.",
                     "vars": [
                         {
-                            "configINI": "Hollywood:fHeadshotChance",
-                            "default": 1.0
+                            "configINI": "Balance:fTimeMin",
+                            "default": 1.5
                         }
                     ],
                     "type": 2.5,
                     "scale": {
-                        "valueDecimal": 2,
-                        "valueIncrement": 0.05,
+                        "valueDecimal": 1,
+                        "valueIncrement": 0.1,
                         "valueMin": 0,
-                        "valueMax": 1
+                        "valueMax": 8
                     }
                 },
                 "3": {
-                    "title": "Chance : autres morts",
+                    "title": "Duree maximum",
                     "enable": 1,
-                    "mouse": "Chance d'une mort de cinema pour les autres morts (pas les explosions).",
+                    "mouse": "Secondes debout, au plus (tire au hasard entre les deux).",
                     "vars": [
                         {
-                            "configINI": "Hollywood:fDramaticChance",
-                            "default": 0.35
+                            "configINI": "Balance:fTimeMax",
+                            "default": 3.5
                         }
                     ],
                     "type": 2.5,
                     "scale": {
-                        "valueDecimal": 2,
-                        "valueIncrement": 0.05,
+                        "valueDecimal": 1,
+                        "valueIncrement": 0.1,
                         "valueMin": 0,
-                        "valueMax": 1
+                        "valueMax": 8
                     }
                 },
                 "4": {
                     "title": "Degats maximum",
                     "enable": 1,
-                    "mouse": "Au-dela, pas de mort de cinema.",
+                    "mouse": "Au-dela, il tombe tout de suite.",
                     "vars": [
                         {
-                            "configINI": "Hollywood:fMaxDamage",
+                            "configINI": "Balance:fMaxDamage",
                             "default": 400
                         }
                     ],
@@ -160,49 +160,49 @@
                     }
                 },
                 "5": {
-                    "title": "Debout sur place",
+                    "title": "Force des jambes",
                     "enable": 1,
-                    "mouse": "Secondes debout en oscillant avant de tituber.",
+                    "mouse": "Part du poids portee (1 = tient bien debout).",
                     "vars": [
                         {
-                            "configINI": "Hollywood:fStandTime",
-                            "default": 2.0
+                            "configINI": "Balance:fSupport",
+                            "default": 1.0
                         }
                     ],
                     "type": 2.5,
                     "scale": {
-                        "valueDecimal": 1,
-                        "valueIncrement": 0.1,
+                        "valueDecimal": 2,
+                        "valueIncrement": 0.05,
                         "valueMin": 0,
-                        "valueMax": 6
+                        "valueMax": 1
                     }
                 },
                 "6": {
-                    "title": "Titube",
+                    "title": "Poussee de la balle qui tue",
                     "enable": 1,
-                    "mouse": "Secondes a tituber avant de tomber.",
+                    "mouse": "Plus bas = il titube au lieu d'etre jete.",
                     "vars": [
                         {
-                            "configINI": "Hollywood:fStumbleTime",
-                            "default": 1.5
+                            "configINI": "Balance:fPushMult",
+                            "default": 0.6
                         }
                     ],
                     "type": 2.5,
                     "scale": {
-                        "valueDecimal": 1,
-                        "valueIncrement": 0.1,
+                        "valueDecimal": 2,
+                        "valueIncrement": 0.05,
                         "valueMin": 0,
-                        "valueMax": 6
+                        "valueMax": 2
                     }
                 },
                 "7": {
-                    "title": "Oscillation",
+                    "title": "Balles encaissees",
                     "enable": 1,
-                    "mouse": "Amplitude du balancement du torse.",
+                    "mouse": "Chaque balle pendant l'agonie lui retire cette part du temps restant.",
                     "vars": [
                         {
-                            "configINI": "Hollywood:fSway",
-                            "default": 0.3
+                            "configINI": "Balance:fHitWeaken",
+                            "default": 0.35
                         }
                     ],
                     "type": 2.5,
@@ -214,12 +214,164 @@
                     }
                 },
                 "8": {
-                    "title": "Poussee des morts",
+                    "title": "Bras ecartes",
                     "enable": 1,
-                    "mouse": "Multiplicateur de la poussee de toutes les morts.",
+                    "mouse": "Force des bras qui s'ecartent pour l'equilibre.",
                     "vars": [
                         {
-                            "configINI": "Hollywood:fPushMult",
+                            "configINI": "Balance:fArms",
+                            "default": 0.6
+                        }
+                    ],
+                    "type": 2.5,
+                    "scale": {
+                        "valueDecimal": 1,
+                        "valueIncrement": 0.1,
+                        "valueMin": 0,
+                        "valueMax": 3
+                    }
+                }
+            }
+        },
+        "3": {
+            "listTitle": "Agonie : equilibre et pas",
+            "pageTitle": "Agonie : equilibre et pas",
+            "columns": 1,
+            "enable": 1,
+            "options": {
+                "1": {
+                    "title": "Freinage",
+                    "enable": 1,
+                    "mouse": "Freine ses glissades (ses pieds accrochent le sol).",
+                    "vars": [
+                        {
+                            "configINI": "Balance:fDamping",
+                            "default": 1.5
+                        }
+                    ],
+                    "type": 2.5,
+                    "scale": {
+                        "valueDecimal": 1,
+                        "valueIncrement": 0.1,
+                        "valueMin": 0,
+                        "valueMax": 10
+                    }
+                },
+                "2": {
+                    "title": "Torse tenu droit",
+                    "enable": 1,
+                    "mouse": "Force qui tient le torse droit.",
+                    "vars": [
+                        {
+                            "configINI": "Balance:fUprightGain",
+                            "default": 6.0
+                        }
+                    ],
+                    "type": 2.5,
+                    "scale": {
+                        "valueDecimal": 1,
+                        "valueIncrement": 0.5,
+                        "valueMin": 0,
+                        "valueMax": 20
+                    }
+                },
+                "3": {
+                    "title": "Oscillation",
+                    "enable": 1,
+                    "mouse": "Amplitude du balancement du torse.",
+                    "vars": [
+                        {
+                            "configINI": "Balance:fSway",
+                            "default": 0.2
+                        }
+                    ],
+                    "type": 2.5,
+                    "scale": {
+                        "valueDecimal": 2,
+                        "valueIncrement": 0.05,
+                        "valueMin": 0,
+                        "valueMax": 1
+                    }
+                },
+                "4": {
+                    "title": "Duree d'un pas",
+                    "enable": 1,
+                    "mouse": "En secondes.",
+                    "vars": [
+                        {
+                            "configINI": "Balance:fStepTime",
+                            "default": 0.35
+                        }
+                    ],
+                    "type": 2.5,
+                    "scale": {
+                        "valueDecimal": 2,
+                        "valueIncrement": 0.05,
+                        "valueMin": 0.1,
+                        "valueMax": 1.5
+                    }
+                },
+                "5": {
+                    "title": "Anticipation",
+                    "enable": 1,
+                    "mouse": "Le pied va la ou il sera dans ... secondes.",
+                    "vars": [
+                        {
+                            "configINI": "Balance:fStepLead",
+                            "default": 0.35
+                        }
+                    ],
+                    "type": 2.5,
+                    "scale": {
+                        "valueDecimal": 2,
+                        "valueIncrement": 0.05,
+                        "valueMin": 0,
+                        "valueMax": 1.5
+                    }
+                },
+                "6": {
+                    "title": "Force du pas",
+                    "enable": 1,
+                    "mouse": "Force qui amene le pied.",
+                    "vars": [
+                        {
+                            "configINI": "Balance:fStepPull",
+                            "default": 40
+                        }
+                    ],
+                    "type": 2,
+                    "scale": {
+                        "valueDecimal": 0,
+                        "valueIncrement": 1,
+                        "valueMin": 0,
+                        "valueMax": 150
+                    }
+                },
+                "7": {
+                    "title": "Amortissement du pas",
+                    "enable": 1,
+                    "mouse": "Plus haut = pas plus calmes.",
+                    "vars": [
+                        {
+                            "configINI": "Balance:fStepDamping",
+                            "default": 8.0
+                        }
+                    ],
+                    "type": 2.5,
+                    "scale": {
+                        "valueDecimal": 1,
+                        "valueIncrement": 0.5,
+                        "valueMin": 0,
+                        "valueMax": 30
+                    }
+                },
+                "8": {
+                    "title": "Hauteur du pas",
+                    "enable": 1,
+                    "mouse": "Le pied se leve de ... (unites Havok).",
+                    "vars": [
+                        {
+                            "configINI": "Balance:fStepLift",
                             "default": 1.5
                         }
                     ],
@@ -232,62 +384,26 @@
                     }
                 },
                 "9": {
-                    "title": "Chance : main sur la plaie",
+                    "title": "Vitesse max du pied",
                     "enable": 1,
-                    "mouse": "Pendant une mort de cinema.",
+                    "mouse": "Vitesse ajoutee au plus par image.",
                     "vars": [
                         {
-                            "configINI": "Hollywood:fGrabChance",
-                            "default": 0.8
+                            "configINI": "Balance:fStepMaxSpeed",
+                            "default": 5.0
                         }
                     ],
                     "type": 2.5,
                     "scale": {
-                        "valueDecimal": 2,
-                        "valueIncrement": 0.05,
+                        "valueDecimal": 1,
+                        "valueIncrement": 0.5,
                         "valueMin": 0,
-                        "valueMax": 1
-                    }
-                },
-                "10": {
-                    "title": "Chance : titube",
-                    "enable": 1,
-                    "mouse": "Pour les morts ordinaires.",
-                    "vars": [
-                        {
-                            "configINI": "Hollywood:fStumbleChance",
-                            "default": 0.5
-                        }
-                    ],
-                    "type": 2.5,
-                    "scale": {
-                        "valueDecimal": 2,
-                        "valueIncrement": 0.05,
-                        "valueMin": 0,
-                        "valueMax": 1
-                    }
-                },
-                "11": {
-                    "title": "Chance : se tord au sol",
-                    "enable": 1,
-                    "mouse": "Pour toutes les morts.",
-                    "vars": [
-                        {
-                            "configINI": "Hollywood:fWritheChance",
-                            "default": 0.7
-                        }
-                    ],
-                    "type": 2.5,
-                    "scale": {
-                        "valueDecimal": 2,
-                        "valueIncrement": 0.05,
-                        "valueMin": 0,
-                        "valueMax": 1
+                        "valueMax": 20
                     }
                 }
             }
         },
-        "3": {
+        "4": {
             "listTitle": "Mort",
             "pageTitle": "Mort",
             "columns": 1,
@@ -330,7 +446,7 @@
                     "vars": [
                         {
                             "configINI": "Death:fPushMult",
-                            "default": 1.0
+                            "default": 1.5
                         }
                     ],
                     "type": 2.5,
@@ -380,11 +496,11 @@
                 "6": {
                     "title": "Tir a la tete : s'effondre net",
                     "enable": 1,
-                    "mouse": "Hors mort de cinema : pas de gestes apres un tir mortel a la tete.",
+                    "mouse": "Desactive : agonie debout comme les autres morts, la tete ballotte.",
                     "vars": [
                         {
                             "configINI": "Death:bHeadshotLimp",
-                            "default": 1
+                            "default": 0
                         }
                     ],
                     "type": 5
@@ -392,7 +508,7 @@
                 "7": {
                     "title": "Main sur la plaie",
                     "enable": 1,
-                    "mouse": "En mourant, une main va sur la blessure.",
+                    "mouse": "En mourant, une main va sur la blessure (la tete pour un tir a la tete).",
                     "vars": [
                         {
                             "configINI": "Death:bGrabWound",
@@ -404,11 +520,11 @@
                 "8": {
                     "title": "Chance : main sur la plaie",
                     "enable": 1,
-                    "mouse": "Morts ordinaires.",
+                    "mouse": "0 = jamais, 1 = toujours.",
                     "vars": [
                         {
                             "configINI": "Death:fGrabChance",
-                            "default": 0.6
+                            "default": 0.7
                         }
                     ],
                     "type": 2.5,
@@ -420,24 +536,6 @@
                     }
                 },
                 "9": {
-                    "title": "Main sur la plaie : degats max",
-                    "enable": 1,
-                    "mouse": "Au-dela, il est tue net (moitie pour la tete).",
-                    "vars": [
-                        {
-                            "configINI": "Death:fGrabMaxDamage",
-                            "default": 150
-                        }
-                    ],
-                    "type": 2,
-                    "scale": {
-                        "valueDecimal": 0,
-                        "valueIncrement": 10,
-                        "valueMin": 0,
-                        "valueMax": 500
-                    }
-                },
-                "10": {
                     "title": "Main sur la plaie : force",
                     "enable": 1,
                     "mouse": "Par rapport aux bras qui se protegent.",
@@ -453,254 +551,6 @@
                         "valueIncrement": 0.1,
                         "valueMin": 0,
                         "valueMax": 5
-                    }
-                }
-            }
-        },
-        "4": {
-            "listTitle": "Mort : debout et titube",
-            "pageTitle": "Mort : debout et titube",
-            "columns": 1,
-            "enable": 1,
-            "options": {
-                "1": {
-                    "title": "Reste debout un instant",
-                    "enable": 1,
-                    "mouse": "Tue d'une seule balle, un PNJ immobile reste debout puis s'effondre.",
-                    "vars": [
-                        {
-                            "configINI": "Death:bStanding",
-                            "default": 1
-                        }
-                    ],
-                    "type": 5
-                },
-                "2": {
-                    "title": "Chance : reste debout",
-                    "enable": 1,
-                    "mouse": "0 = jamais, 1 = toujours.",
-                    "vars": [
-                        {
-                            "configINI": "Death:fStandingChance",
-                            "default": 0.5
-                        }
-                    ],
-                    "type": 2.5,
-                    "scale": {
-                        "valueDecimal": 2,
-                        "valueIncrement": 0.05,
-                        "valueMin": 0,
-                        "valueMax": 1
-                    }
-                },
-                "3": {
-                    "title": "Debout : degats max",
-                    "enable": 1,
-                    "mouse": "Au-dela, il tombe tout de suite (moitie pour la tete).",
-                    "vars": [
-                        {
-                            "configINI": "Death:fStandingMaxDamage",
-                            "default": 150
-                        }
-                    ],
-                    "type": 2,
-                    "scale": {
-                        "valueDecimal": 0,
-                        "valueIncrement": 10,
-                        "valueMin": 0,
-                        "valueMax": 500
-                    }
-                },
-                "4": {
-                    "title": "Debout : vitesse max",
-                    "enable": 1,
-                    "mouse": "Au-dela, il est en mouvement et ne reste pas sur place.",
-                    "vars": [
-                        {
-                            "configINI": "Death:fStandingMaxSpeed",
-                            "default": 2.0
-                        }
-                    ],
-                    "type": 2.5,
-                    "scale": {
-                        "valueDecimal": 1,
-                        "valueIncrement": 0.5,
-                        "valueMin": 0,
-                        "valueMax": 10
-                    }
-                },
-                "5": {
-                    "title": "Duree debout",
-                    "enable": 1,
-                    "mouse": "En secondes.",
-                    "vars": [
-                        {
-                            "configINI": "Death:fStandingTime",
-                            "default": 0.8
-                        }
-                    ],
-                    "type": 2.5,
-                    "scale": {
-                        "valueDecimal": 1,
-                        "valueIncrement": 0.1,
-                        "valueMin": 0,
-                        "valueMax": 5
-                    }
-                },
-                "6": {
-                    "title": "Debout : poids porte",
-                    "enable": 1,
-                    "mouse": "1 = tout le poids du corps porte, puis les jambes cedent.",
-                    "vars": [
-                        {
-                            "configINI": "Death:fStandingSupport",
-                            "default": 1.0
-                        }
-                    ],
-                    "type": 2.5,
-                    "scale": {
-                        "valueDecimal": 2,
-                        "valueIncrement": 0.05,
-                        "valueMin": 0,
-                        "valueMax": 1
-                    }
-                },
-                "7": {
-                    "title": "Debout : poussee de la balle",
-                    "enable": 1,
-                    "mouse": "Plus bas = il encaisse sans reculer.",
-                    "vars": [
-                        {
-                            "configINI": "Death:fStandingPushMult",
-                            "default": 0.3
-                        }
-                    ],
-                    "type": 2.5,
-                    "scale": {
-                        "valueDecimal": 2,
-                        "valueIncrement": 0.05,
-                        "valueMin": 0,
-                        "valueMax": 1
-                    }
-                },
-                "8": {
-                    "title": "Titube en mourant",
-                    "enable": 1,
-                    "mouse": "Il fait quelques pas dans le sens du coup avant que ses jambes cedent.",
-                    "vars": [
-                        {
-                            "configINI": "Death:bStumble",
-                            "default": 1
-                        }
-                    ],
-                    "type": 5
-                },
-                "9": {
-                    "title": "Chance : titube",
-                    "enable": 1,
-                    "mouse": "Hors mode Hollywood.",
-                    "vars": [
-                        {
-                            "configINI": "Death:fStumbleChance",
-                            "default": 0.35
-                        }
-                    ],
-                    "type": 2.5,
-                    "scale": {
-                        "valueDecimal": 2,
-                        "valueIncrement": 0.05,
-                        "valueMin": 0,
-                        "valueMax": 1
-                    }
-                },
-                "10": {
-                    "title": "Duree du titubement",
-                    "enable": 1,
-                    "mouse": "En secondes.",
-                    "vars": [
-                        {
-                            "configINI": "Death:fStumbleTime",
-                            "default": 1.2
-                        }
-                    ],
-                    "type": 2.5,
-                    "scale": {
-                        "valueDecimal": 1,
-                        "valueIncrement": 0.1,
-                        "valueMin": 0,
-                        "valueMax": 5
-                    }
-                },
-                "11": {
-                    "title": "Titube : vitesse",
-                    "enable": 1,
-                    "mouse": "Vitesse a laquelle le corps est entraine.",
-                    "vars": [
-                        {
-                            "configINI": "Death:fStumbleSpeed",
-                            "default": 1.5
-                        }
-                    ],
-                    "type": 2.5,
-                    "scale": {
-                        "valueDecimal": 1,
-                        "valueIncrement": 0.1,
-                        "valueMin": 0,
-                        "valueMax": 6
-                    }
-                },
-                "12": {
-                    "title": "Titube : inclinaison",
-                    "enable": 1,
-                    "mouse": "Torse penche dans le sens du coup.",
-                    "vars": [
-                        {
-                            "configINI": "Death:fStumbleLean",
-                            "default": 0.5
-                        }
-                    ],
-                    "type": 2.5,
-                    "scale": {
-                        "valueDecimal": 2,
-                        "valueIncrement": 0.05,
-                        "valueMin": 0,
-                        "valueMax": 2
-                    }
-                },
-                "13": {
-                    "title": "Titube : poussee de la balle",
-                    "enable": 1,
-                    "mouse": "Plus bas = c'est le titubement qui le fait partir.",
-                    "vars": [
-                        {
-                            "configINI": "Death:fStumblePushMult",
-                            "default": 0.4
-                        }
-                    ],
-                    "type": 2.5,
-                    "scale": {
-                        "valueDecimal": 2,
-                        "valueIncrement": 0.05,
-                        "valueMin": 0,
-                        "valueMax": 1
-                    }
-                },
-                "14": {
-                    "title": "Torse tenu droit",
-                    "enable": 1,
-                    "mouse": "Force qui tient le torse droit debout ou en titubant.",
-                    "vars": [
-                        {
-                            "configINI": "Death:fUprightGain",
-                            "default": 6.0
-                        }
-                    ],
-                    "type": 2.5,
-                    "scale": {
-                        "valueDecimal": 1,
-                        "valueIncrement": 0.5,
-                        "valueMin": 0,
-                        "valueMax": 20
                     }
                 }
             }
@@ -726,11 +576,11 @@
                 "2": {
                     "title": "Chance : se tord au sol",
                     "enable": 1,
-                    "mouse": "Hors mode Hollywood.",
+                    "mouse": "0 = jamais, 1 = toujours.",
                     "vars": [
                         {
                             "configINI": "Death:fWritheChance",
-                            "default": 0.4
+                            "default": 0.6
                         }
                     ],
                     "type": 2.5,
@@ -816,11 +666,11 @@
                 "7": {
                     "title": "Degats max",
                     "enable": 1,
-                    "mouse": "Au-dela, il ne se tord pas (moitie pour la tete).",
+                    "mouse": "Au-dela, il ne se tord pas.",
                     "vars": [
                         {
                             "configINI": "Death:fWritheMaxDamage",
-                            "default": 120
+                            "default": 400
                         }
                     ],
                     "type": 2,
@@ -828,7 +678,7 @@
                         "valueDecimal": 0,
                         "valueIncrement": 10,
                         "valueMin": 0,
-                        "valueMax": 500
+                        "valueMax": 1000
                     }
                 }
             }

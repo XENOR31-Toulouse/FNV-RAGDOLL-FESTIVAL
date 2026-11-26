@@ -19,8 +19,8 @@
 
 namespace
 {
-	constexpr UInt32 kPluginVersion = 5;            // pour xNVSE : entier qui augmente a chaque version publiee
-	constexpr const char* kVersionName = "0.5.0-alpha"; // pour les joueurs : version du paquet
+	constexpr UInt32 kPluginVersion = 6;            // pour xNVSE : entier qui augmente a chaque version publiee
+	constexpr const char* kVersionName = "0.6.0-alpha"; // pour les joueurs : version du paquet
 	constexpr const char* kPluginName = "NVReactiveRagdoll";
 
 	PluginHandle g_handle = 0xFFFFFFFF;
@@ -69,7 +69,7 @@ namespace
 		// [Death] coup fatal : poussee gardee jusqu'au passage en ragdoll de mort
 		bool deferFatal = true;
 		float fatalWait = 1.0f;
-		float fatalMult = 1.0f;
+		float fatalMult = 1.5f; // morts exagerees : la balle qui tue pousse fort
 		float carryVelocity = 1.0f; // part de la vitesse de course gardee en tombant (mort ou renverse)
 		// [Reactions] charge des coups : chaque coup ajoute sa force, la charge retombe avec le temps
 		bool stagger = true;
@@ -94,44 +94,34 @@ namespace
 		float armMaxDv = 4.f;
 		// [Death] etape 5 : facon de mourir
 		bool grab = true;
-		float grabChance = 0.6f;
-		float grabMaxDamage = 150.f;
+		float grabChance = 0.7f;
 		float grabPull = 1.5f;
-		bool stand = true;
-		float standChance = 0.5f;
-		float standMaxDamage = 150.f;
-		float standMaxSpeed = 2.f;
-		float standTime = 0.8f;
-		float standSupport = 1.0f;
-		float standPushMult = 0.3f;
-		// [Death] mort facon Euphoria
-		bool headshotLimp = true;
-		bool stumble = true;
-		float stumbleChance = 0.35f;
-		float stumbleTime = 1.2f;
-		float stumbleSpeed = 1.5f;
-		float stumbleLean = 0.5f;
-		float stumblePushMult = 0.4f;
+		bool headshotLimp = false;
+		// [Balance] agonie debout facon Euphoria : il cherche son equilibre, fait des pas, encaisse, puis lache
+		bool balance = true;
+		float balanceTimeMin = 1.5f;
+		float balanceTimeMax = 3.5f;
+		float balanceMaxDamage = 400.f;
+		float balanceSupport = 1.0f;
+		float balancePushMult = 0.6f;
+		float balanceDamping = 1.5f;
 		float uprightGain = 6.f;
+		float sway = 0.2f;
+		float stepTime = 0.35f;
+		float stepLead = 0.35f;
+		float stepPull = 40.f;
+		float stepDamping = 8.f;
+		float stepLift = 1.5f;
+		float stepMaxDv = 5.f;
+		float balanceArms = 0.6f;
+		float hitVitalityLoss = 0.35f;
 		bool writhe = true;
-		float writheChance = 0.4f;
+		float writheChance = 0.6f;
 		float writheTime = 3.f;
 		float writheTimer = 0.7f;
 		float writheStrength = 0.35f;
 		float writhePull = 0.5f;
-		float writheMaxDamage = 120.f;
-		// [Hollywood] morts de cinema, exagerees
-		bool hollywood = true;
-		float hwHeadshotChance = 1.0f;
-		float hwDramaticChance = 0.35f;
-		float hwMaxDamage = 400.f;
-		float hwStandTime = 2.0f;
-		float hwStumbleTime = 1.5f;
-		float hwSway = 0.3f;
-		float hwPushMult = 1.5f;
-		float hwGrabChance = 0.8f;
-		float hwStumbleChance = 0.5f;
-		float hwWritheChance = 0.7f;
+		float writheMaxDamage = 400.f;
 		// etape 6 : [Fire], [Shock], [Explosions]
 		bool elements = true;
 		float burnTime = 2.5f;
@@ -224,24 +214,26 @@ namespace
 		c.armMaxDv = IniFloat("Muscles", "fArmMaxSpeed", c.armMaxDv);
 		c.grab = IniInt("Death", "bGrabWound", 1) != 0;
 		c.grabChance = IniFloat("Death", "fGrabChance", c.grabChance);
-		c.grabMaxDamage = IniFloat("Death", "fGrabMaxDamage", c.grabMaxDamage);
 		c.grabPull = IniFloat("Death", "fGrabPull", c.grabPull);
-		c.stand = IniInt("Death", "bStanding", 1) != 0;
-		c.standChance = IniFloat("Death", "fStandingChance", c.standChance);
-		c.standMaxDamage = IniFloat("Death", "fStandingMaxDamage", c.standMaxDamage);
-		c.standMaxSpeed = IniFloat("Death", "fStandingMaxSpeed", c.standMaxSpeed);
-		c.standTime = IniFloat("Death", "fStandingTime", c.standTime);
-		c.standSupport = IniFloat("Death", "fStandingSupport", c.standSupport);
-		c.standPushMult = IniFloat("Death", "fStandingPushMult", c.standPushMult);
 		c.livingReactions = IniInt("General", "bLivingReactions", 0) != 0;
-		c.headshotLimp = IniInt("Death", "bHeadshotLimp", 1) != 0;
-		c.stumble = IniInt("Death", "bStumble", 1) != 0;
-		c.stumbleChance = IniFloat("Death", "fStumbleChance", c.stumbleChance);
-		c.stumbleTime = IniFloat("Death", "fStumbleTime", c.stumbleTime);
-		c.stumbleSpeed = IniFloat("Death", "fStumbleSpeed", c.stumbleSpeed);
-		c.stumbleLean = IniFloat("Death", "fStumbleLean", c.stumbleLean);
-		c.stumblePushMult = IniFloat("Death", "fStumblePushMult", c.stumblePushMult);
-		c.uprightGain = IniFloat("Death", "fUprightGain", c.uprightGain);
+		c.headshotLimp = IniInt("Death", "bHeadshotLimp", 0) != 0;
+		c.balance = IniInt("Balance", "bEnabled", 1) != 0;
+		c.balanceTimeMin = IniFloat("Balance", "fTimeMin", c.balanceTimeMin);
+		c.balanceTimeMax = IniFloat("Balance", "fTimeMax", c.balanceTimeMax);
+		c.balanceMaxDamage = IniFloat("Balance", "fMaxDamage", c.balanceMaxDamage);
+		c.balanceSupport = IniFloat("Balance", "fSupport", c.balanceSupport);
+		c.balancePushMult = IniFloat("Balance", "fPushMult", c.balancePushMult);
+		c.balanceDamping = IniFloat("Balance", "fDamping", c.balanceDamping);
+		c.uprightGain = IniFloat("Balance", "fUprightGain", c.uprightGain);
+		c.sway = IniFloat("Balance", "fSway", c.sway);
+		c.stepTime = IniFloat("Balance", "fStepTime", c.stepTime);
+		c.stepLead = IniFloat("Balance", "fStepLead", c.stepLead);
+		c.stepPull = IniFloat("Balance", "fStepPull", c.stepPull);
+		c.stepDamping = IniFloat("Balance", "fStepDamping", c.stepDamping);
+		c.stepLift = IniFloat("Balance", "fStepLift", c.stepLift);
+		c.stepMaxDv = IniFloat("Balance", "fStepMaxSpeed", c.stepMaxDv);
+		c.balanceArms = IniFloat("Balance", "fArms", c.balanceArms);
+		c.hitVitalityLoss = IniFloat("Balance", "fHitWeaken", c.hitVitalityLoss);
 		c.writhe = IniInt("Death", "bWrithe", 1) != 0;
 		c.writheChance = IniFloat("Death", "fWritheChance", c.writheChance);
 		c.writheTime = IniFloat("Death", "fWritheTime", c.writheTime);
@@ -249,17 +241,6 @@ namespace
 		c.writheStrength = IniFloat("Death", "fWritheStrength", c.writheStrength);
 		c.writhePull = IniFloat("Death", "fWrithePull", c.writhePull);
 		c.writheMaxDamage = IniFloat("Death", "fWritheMaxDamage", c.writheMaxDamage);
-		c.hollywood = IniInt("Hollywood", "bEnabled", 1) != 0;
-		c.hwHeadshotChance = IniFloat("Hollywood", "fHeadshotChance", c.hwHeadshotChance);
-		c.hwDramaticChance = IniFloat("Hollywood", "fDramaticChance", c.hwDramaticChance);
-		c.hwMaxDamage = IniFloat("Hollywood", "fMaxDamage", c.hwMaxDamage);
-		c.hwStandTime = IniFloat("Hollywood", "fStandTime", c.hwStandTime);
-		c.hwStumbleTime = IniFloat("Hollywood", "fStumbleTime", c.hwStumbleTime);
-		c.hwSway = IniFloat("Hollywood", "fSway", c.hwSway);
-		c.hwPushMult = IniFloat("Hollywood", "fPushMult", c.hwPushMult);
-		c.hwGrabChance = IniFloat("Hollywood", "fGrabChance", c.hwGrabChance);
-		c.hwStumbleChance = IniFloat("Hollywood", "fStumbleChance", c.hwStumbleChance);
-		c.hwWritheChance = IniFloat("Hollywood", "fWritheChance", c.hwWritheChance);
 		c.elements = IniInt("General", "bElements", 1) != 0;
 		c.burnTime = IniFloat("Fire", "fBurnTime", c.burnTime);
 		c.burnDeathTime = IniFloat("Fire", "fDeathTime", c.burnDeathTime);
@@ -597,15 +578,13 @@ namespace
 		int grabHand;     // 0 gauche, 1 droite
 		char wound[32];   // os touche
 		V3 woundLocal;    // point de la plaie dans le repere de l'os
-		bool stand;       // reste debout un instant, puis s'effondre
 		int element;      // Element : le feu fait battre bras et jambes, l'electricite fait trembler
 		bool explosion;   // projete en l'air : bras en moulinet et jambes qui pedalent tant qu'il vole
-		bool stumble;     // titube quelques pas dans le sens du coup avant de tomber (facon Euphoria)
+		bool balance;     // agonie debout facon Euphoria : cherche son equilibre, fait des pas, encaisse, puis lache
 		bool writhe;      // une fois au sol, se tord quelques secondes (mains vers le ventre, jambes repliees)
-		bool limp;        // tir a la tete : s'effondre net, sans muscles
-		float upTime;     // duree debout (stand ou stumble), secondes
-		float standPart;  // dont : debout sur place (oscille) avant de tituber ; = upTime pour stand seul, 0 pour stumble seul
-		bool dramatic;    // Hollywood : reste debout plusieurs secondes en oscillant, titube, puis tombe
+		bool limp;        // s'effondre net, sans muscles (option tir a la tete)
+		bool headWound;   // touche a la tete : la tete ballotte pendant l'agonie
+		float upTime;     // duree de l'agonie debout, secondes (raccourcie par chaque balle encaissee)
 	};
 
 	// direction aleatoire, unitaire
@@ -655,6 +634,9 @@ namespace
 		DeathStyle death;
 		V3 flail[2];     // feu : direction ou chaque main bat, changee toutes les fFlailTimer s
 		DWORD nextFlail;
+		int stepFoot;    // agonie : pied qui fait le pas en cours (0 gauche, 1 droit, -1 aucun)
+		DWORD stepEnd;   // fin du pas en cours
+		V3 stepTarget;   // ou le pied va se poser
 	};
 	constexpr int kMaxMuscles = 8;
 	SInt32 KnockedState(void* actorRef); // plus bas
@@ -680,22 +662,46 @@ namespace
 		if (!slot) return; // trop de PNJ au sol en meme temps : les suivants tombent sans muscles
 		fallDir.z = 0.f;
 		DeathStyle ds = death ? *death : DeathStyle{};
+		if (!dying) { ds.balance = ds.writhe = ds.grab = false; ds.upTime = 0.f; } // l'agonie n'est que pour la mort
 		if (dying && ds.limp && !ds.element)
 		{
 			if (g_cfg.verbose) Log("Muscles de %08X : aucun (tir a la tete, s'effondre net)", RefID(target));
 			return;
 		}
-		// mort : debout (stand / stumble), puis chute, puis au sol (writhe)
+		// mort : agonie debout (balance), puis chute, puis au sol (writhe)
 		float duration = dying ? ds.upTime + g_cfg.muscleDeathTime + (ds.writhe ? g_cfg.writheTime : 0.f) : g_cfg.muscleTime;
 		if (ds.element == kElem_Fire && g_cfg.burnDeathTime > duration) duration = g_cfg.burnDeathTime;
 		if (ds.element == kElem_Shock && g_cfg.shockTime > duration) duration = g_cfg.shockTime;
 		if (ds.explosion && g_cfg.flyTime + 0.5f > duration) duration = g_cfg.flyTime + 0.5f;
 		*slot = {RefID(target), target, GetTickCount(), GetTickCount(), duration, dying, Norm(fallDir), 0.f, ds};
+		slot->stepFoot = -1;
 		if (g_cfg.verbose)
-			Log("Muscles de %08X : debut (%s%s%s%s%s%s%s%s%s), %.1f s", slot->refID, dying ? "mort" : "chute",
-				ds.stand ? ", reste debout" : "", ds.stumble ? ", titube" : "", ds.writhe ? ", se tord au sol" : "",
+			Log("Muscles de %08X : debut (%s%s%s%s%s%s%s%s), %.1f s", slot->refID, dying ? "mort" : "chute",
+				ds.balance ? ", agonie debout" : "", ds.writhe ? ", se tord au sol" : "",
 				ds.grab ? ", main sur la plaie : " : "", ds.grab ? ds.wound : "",
 				ds.element ? ", " : "", ElementName(ds.element), ds.explosion ? ", projete" : "", duration);
+	}
+
+	// Une balle encaissee pendant l'agonie debout : il lui reste moins de forces (fHitWeaken de son temps restant).
+	// Renvoie true si le PNJ etait en train de mourir (agonie en cours).
+	bool WeakenDying(void* target)
+	{
+		for (MuscleTask& m : g_muscles)
+		{
+			if (m.refID != RefID(target) || !m.dying) continue;
+			float age = (GetTickCount() - m.start) / 1000.f;
+			if (m.death.balance && age < m.death.upTime)
+			{
+				float left = (m.death.upTime - age) * (1.f - g_cfg.hitVitalityLoss);
+				if (left < 0.15f) left = 0.15f;
+				float cut = m.death.upTime - (age + left);
+				m.death.upTime -= cut;
+				m.duration -= cut;
+				if (g_cfg.verbose) Log("Agonie de %08X : balle encaissee, encore %.1f s debout", m.refID, left);
+			}
+			return true;
+		}
+		return false;
 	}
 
 	// inverse d'inertie moyenne (scalaire) : suffisant pour repartir un effort entre deux os
@@ -704,21 +710,27 @@ namespace
 	void AddLinVel(UInt8* rb, V3 dv) { float* v = &At<float>(rb, hk::kLinVelocity); v[0] += dv.x; v[1] += dv.y; v[2] += dv.z; }
 	void AddAngVel(UInt8* rb, V3 dw) { float* w = &At<float>(rb, hk::kAngVelocity); w[0] += dw.x; w[1] += dw.y; w[2] += dw.z; }
 
-	// Tire la main i vers target, la poitrine c en sens inverse (ressort amorti, PD)
-	void PullHand(const Body* b, int hand, int chest, V3 target, float strength, float dt)
+	// Tire l'os `hand` vers target, l'os d'appui `chest` en sens inverse (ressort amorti, PD) : un muscle tire entre
+	// deux os, le corps entier n'est pas propulse.
+	void PullBody(const Body* b, int hand, int chest, V3 target, float kp, float kd, float maxDv, float strength, float dt)
 	{
 		UInt8* h = b[hand].rb;
 		UInt8* c = b[chest].rb;
 		V3 e = target - BodyCenter(h);
 		V3 vrel = Load3(h, hk::kLinVelocity) - Load3(c, hk::kLinVelocity);
-		V3 dv = (e * g_cfg.armPull - vrel * g_cfg.armDamping) * (dt * strength);
+		V3 dv = (e * kp - vrel * kd) * (dt * strength);
 		float l = Len(dv);
-		if (l > g_cfg.armMaxDv) dv = dv * (g_cfg.armMaxDv / l);
+		if (l > maxDv) dv = dv * (maxDv / l);
 		float imh = At<float>(h, hk::kInvMass), imc = At<float>(c, hk::kInvMass);
 		if (imh + imc <= 0.f) return;
 		V3 J = dv * (1.f / (imh + imc)); // impulsion qui change la vitesse relative de dv
 		AddLinVel(h, J * imh);
 		AddLinVel(c, J * -imc);
+	}
+
+	void PullHand(const Body* b, int hand, int chest, V3 target, float strength, float dt)
+	{
+		PullBody(b, hand, chest, target, g_cfg.armPull, g_cfg.armDamping, g_cfg.armMaxDv, strength, dt);
 	}
 
 	// Renvoie false quand la tache est finie
@@ -836,18 +848,24 @@ namespace
 			}
 		}
 
-		// 0. debout (stand) puis/ou titube (stumble). Le corps est porte comme une marionnette : chaque os, sauf le bas
-		//    des jambes, est soulage de son poids (fStandingSupport), pleinement pendant 70 % du temps puis de moins en
-		//    moins : les jambes cedent a la fin. Le torse est tenu droit : sur place il oscille (Hollywood), en
-		//    titubant il penche dans le sens du coup et le corps est entraine, les pieds trainant derriere.
-		if (age < standT)
+		// 0. Agonie debout, facon Euphoria. Le mourant essaie de tenir debout :
+		//    - le haut du corps est soulage de son poids (fSupport), pleinement pendant 70 % de l'agonie puis de moins
+		//      en moins : a la fin ses jambes cedent ;
+		//    - le torse est tenu droit (axe bassin -> poitrine), penche vers ou il part et oscille un peu ;
+		//    - equilibre : on calcule ou il va (centre de masse + vitesse x fStepLead, le « point de capture ») ; s'il
+		//      s'eloigne de ses pieds, un pied se leve et va se poser la-bas : il fait des pas pour se rattraper. Une balle
+		//      qui le pousse, ou l'elan de sa course, le font donc tituber de lui-meme, dans le bon sens ;
+		//    - ses bras s'ecartent pour garder l'equilibre (sauf la main sur la plaie).
+		bool upright = age < standT;
+		if (upright)
 		{
 			float hold = standT * 0.7f;
-			float support = g_cfg.standSupport * (age < hold ? 1.f : 1.f - (age - hold) / (standT - hold));
-			bool stumbling = m.death.stumble && age >= m.death.standPart;
+			float support = g_cfg.balanceSupport * (age < hold ? 1.f : 1.f - (age - hold) / (standT - hold));
 			V3 g = GravityOf(b[chest].rb);
 			int ends[16];
 			int ne = humanoid ? 0 : LimbEnds(b, n, chest, ends, 16);
+			float mass = 0.f;
+			V3 com = {0, 0, 0}, comV = {0, 0, 0};
 			for (int k = 0; k < n; ++k)
 			{
 				if (!hk::IsDynamic(At<UInt8>(b[k].rb, hk::kMotionType))) continue;
@@ -857,16 +875,24 @@ namespace
 				if (lowerLeg) continue;
 				AddLinVel(b[k].rb, g * (-support * dt));
 				touched[k] = true;
+				float mk = MassOf(b[k].rb);
+				com = com + BodyCenter(b[k].rb) * mk;
+				comV = comV + Load3(b[k].rb, hk::kLinVelocity) * mk;
+				mass += mk;
 			}
+			if (mass > 0.f) { com = com * (1.f / mass); comV = comV * (1.f / mass); }
 
 			bool hasPelvis = pelvis >= 0 && pelvis != chest && hk::IsDynamic(At<UInt8>(b[pelvis].rb, hk::kMotionType));
-			if (hasPelvis)
+			if (hasPelvis && mass > 0.f)
 			{
-				// equilibre : l'axe bassin -> poitrine est ramene vers une direction voulue (sans connaitre les axes des os)
-				V3 side = Norm(Cross(m.fallDir, V3{0, 0, 1}));
-				float sway = m.death.dramatic && !stumbling ? g_cfg.hwSway * sinf(age * 4.8f) : 0.f; // oscille sur place
-				float lean = stumbling ? g_cfg.stumbleLean : (m.death.dramatic ? g_cfg.hwSway * 0.5f * sinf(age * 3.1f) : 0.f);
-				V3 want = Norm(V3{0, 0, 1} + m.fallDir * lean + side * sway);
+				// torse tenu droit, penche vers ou il part, qui oscille
+				V3 hv = {comV.x, comV.y, 0.f};
+				float speed = Len(hv);
+				V3 leanDir = speed > 0.05f ? hv * (1.f / speed) : m.fallDir;
+				float lean = speed * 0.15f > 0.6f ? 0.6f : speed * 0.15f;
+				V3 side = Norm(Cross(leanDir, V3{0, 0, 1}));
+				V3 want = Norm(V3{0, 0, 1} + leanDir * lean + side * (g_cfg.sway * sinf(age * 4.8f))
+					+ m.fallDir * (g_cfg.sway * 0.5f * sinf(age * 3.1f)));
 				V3 spine = Norm(BodyCenter(b[chest].rb) - BodyCenter(b[pelvis].rb));
 				V3 axis = Cross(spine, want);
 				float s = Len(axis);
@@ -884,16 +910,50 @@ namespace
 					}
 				}
 
-				float follow = dt * 4.f > 1.f ? 1.f : dt * 4.f;
+				// il ne glisse pas comme sur de la glace : sa vitesse horizontale s'use (ses pieds freinent)
+				float brake = dt * g_cfg.balanceDamping > 1.f ? 1.f : dt * g_cfg.balanceDamping;
 				for (int part : {chest, pelvis})
 				{
 					V3 v = Load3(b[part].rb, hk::kLinVelocity);
-					// titube : entraine dans le sens du coup ; sur place : ne glisse pas
-					V3 wantV = stumbling ? m.fallDir * (g_cfg.stumbleSpeed * support) : V3{0, 0, 0};
-					V3 dv = {wantV.x - v.x, wantV.y - v.y, 0.f};
-					AddLinVel(b[part].rb, dv * follow);
+					AddLinVel(b[part].rb, V3{-v.x, -v.y, 0.f} * brake);
 				}
 				touched[chest] = touched[pelvis] = true;
+
+				// les pas : un pied a la fois va se poser sous le point de capture
+				int feet[2] = {humanoid ? FindBody(b, n, "Bip01 L Foot") : -1, humanoid ? FindBody(b, n, "Bip01 R Foot") : -1};
+				if (feet[0] >= 0 && feet[1] >= 0 && hk::IsDynamic(At<UInt8>(b[feet[0]].rb, hk::kMotionType))
+					&& hk::IsDynamic(At<UInt8>(b[feet[1]].rb, hk::kMotionType)))
+				{
+					V3 fp[2] = {BodyCenter(b[feet[0]].rb), BodyCenter(b[feet[1]].rb)};
+					V3 mid = (fp[0] + fp[1]) * 0.5f;
+					V3 cp = com + comV * g_cfg.stepLead;
+					V3 err = {cp.x - mid.x, cp.y - mid.y, 0.f};
+					float legLen = Len(BodyCenter(b[pelvis].rb) - mid);
+					if (m.stepFoot >= 0 && now >= m.stepEnd) m.stepFoot = -1;
+					if (m.stepFoot < 0 && Len(err) > legLen * 0.12f)
+					{
+						// le pied le plus loin du point de capture fait le pas ; l'ecart entre les pieds est garde
+						V3 d0 = {cp.x - fp[0].x, cp.y - fp[0].y, 0.f}, d1 = {cp.x - fp[1].x, cp.y - fp[1].y, 0.f};
+						int f = Len(d0) > Len(d1) ? 0 : 1;
+						V3 off = fp[f] - mid;
+						off.z = 0.f;
+						m.stepFoot = f;
+						m.stepEnd = now + (DWORD)(g_cfg.stepTime * 1000.f);
+						m.stepTarget = {cp.x + off.x, cp.y + off.y, fp[f].z};
+					}
+					if (m.stepFoot >= 0)
+					{
+						int k = feet[m.stepFoot];
+						float total = g_cfg.stepTime > 0.01f ? g_cfg.stepTime : 0.01f;
+						float phase = 1.f - (float)(m.stepEnd - now) / (total * 1000.f);
+						if (phase < 0.f) phase = 0.f;
+						if (phase > 1.f) phase = 1.f;
+						V3 target = m.stepTarget;
+						target.z += g_cfg.stepLift * sinf(3.14159f * phase); // le pied se leve puis se pose
+						PullBody(b, k, pelvis, target, g_cfg.stepPull, g_cfg.stepDamping, g_cfg.stepMaxDv, support, dt);
+						touched[k] = true;
+					}
+				}
 			}
 		}
 
@@ -937,7 +997,8 @@ namespace
 			UInt8* cp = b[p].rb;
 			if (!hk::IsDynamic(At<UInt8>(ck, hk::kMotionType)) || !hk::IsDynamic(At<UInt8>(cp, hk::kMotionType))) continue;
 			float damp = g_cfg.jointDamping;
-			if (b[k].name && (strstr(b[k].name, "Head") || strstr(b[k].name, "Neck"))) damp = g_cfg.neckDamping;
+			if (b[k].name && (strstr(b[k].name, "Head") || strstr(b[k].name, "Neck")))
+				damp = (m.death.headWound && upright) ? 0.03f : g_cfg.neckDamping; // touche a la tete : elle ballotte
 			if (elem == kElem_Shock) damp *= 2.f; // muscles contractes par le courant
 			damp *= strength;
 			if (damp > 0.9f) damp = 0.9f;
@@ -980,6 +1041,16 @@ namespace
 				// au sol : la main erre pres du ventre et de la poitrine
 				target = chestPos + m.flail[s] * (m.reach * 0.35f) + V3{0, 0, -m.reach * 0.2f};
 				pull *= g_cfg.writhePull;
+			}
+			else if (upright)
+			{
+				// agonie debout : le bras s'ecarte sur le cote pour l'equilibre, et bat un peu
+				V3 side = sh - chestPos;
+				side.z = 0.f;
+				side = Norm(side);
+				float wobble = sinf(age * 5.3f + s * 1.7f);
+				target = sh + side * (m.reach * 0.7f) + V3{0, 0, m.reach * (0.05f + 0.15f * wobble)};
+				pull *= g_cfg.balanceArms;
 			}
 			else
 			{
@@ -1332,11 +1403,13 @@ namespace
 		float charge = living ? AddCharge(st, force) : 0.f;
 		if (!living) st.lastHit = GetTickCount(); // garde la case de ce PNJ (les plus anciennes sont reprises)
 		// cadavre : deja mort depuis plus d'une seconde ; il est seulement pousse, sans nouvelle facon de mourir
-		bool corpse = false;
+		// en agonie : la balle le pousse (il titube de lui-meme) et lui retire des forces
+		bool corpse = false, agony = false;
 		if (IsDead(target))
 		{
 			if (!st.deathTick) st.deathTick = GetTickCount();
-			corpse = GetTickCount() - st.deathTick > 1000;
+			agony = WeakenDying(target);
+			corpse = agony || GetTickCount() - st.deathTick > 1000;
 		}
 		SInt32 knocked = KnockedState(target);
 		bool standing = living && knocked == 0 && IsHighProcess(target) && target != Player();
@@ -1363,28 +1436,22 @@ namespace
 
 		// etape 5 : facon de mourir (etape 6 : et chute) ; le feu et le courant remplacent main sur la plaie et debout
 		// Facon de mourir, choisie a chaque coup (on ne sait pas toujours lequel sera fatal) : elle ne sert que si le PNJ
-		// meurt. Facon Euphoria : tir a la tete = s'effondre net ; sinon il peut porter la main a la plaie, rester debout
-		// ou tituber quelques pas avant de tomber, puis se tordre au sol.
+		// meurt. Facon Euphoria, exageree : presque chaque mort (tir a la tete compris) commence par une agonie debout :
+		// il cherche son equilibre, fait des pas, encaisse les balles, puis ses jambes cedent et il se tord au sol.
+		// Seules les explosions, le feu, le courant et les degats enormes (fMaxDamage) le jettent directement.
 		DeathStyle ds = {};
 		ds.element = elem;
 		ds.explosion = explosion;
 		{
 			const char* bone = b[i].name ? b[i].name : "";
 			bool head = strstr(bone, "Head") || strstr(bone, "Neck");
-			float limit = head ? 0.5f : 1.f; // un tir a la tete tue net plus facilement
 			float total = dmg * pellets;
 			bool muscles = g_cfg.muscles && g_cfg.musclesOnDeath && !elem; // la facon de mourir passe par les muscles
-			bool moving = Len(MoveVelocity(target)) >= g_cfg.standMaxSpeed;
-			bool hollywood = g_cfg.hollywood && muscles && !explosion;
-			// Hollywood : une balle (ou un coup) qui tue fait une mort de cinema : il reste debout plusieurs secondes en
-			// oscillant, titube, puis tombe. Toujours pour la tete (fHeadshotChance), parfois pour le reste.
-			ds.dramatic = hollywood && total < g_cfg.hwMaxDamage && Chance(head ? g_cfg.hwHeadshotChance : g_cfg.hwDramaticChance);
-			ds.limp = !ds.dramatic && g_cfg.headshotLimp && head && !elem && !explosion;
-			if (hollywood) { deathPush *= g_cfg.hwPushMult; limit = 1.f; }
+			ds.headWound = head;
+			ds.limp = g_cfg.headshotLimp && head && !elem && !explosion;
 			if (muscles && !ds.limp)
 			{
-				float grabChance = ds.dramatic ? g_cfg.hwGrabChance : g_cfg.grabChance;
-				if (g_cfg.grab && !explosion && IsHumanoid(b, n) && (ds.dramatic || total < g_cfg.grabMaxDamage * limit) && Chance(grabChance))
+				if (g_cfg.grab && !explosion && IsHumanoid(b, n) && Chance(g_cfg.grabChance))
 				{
 					ds.grab = true;
 					snprintf(ds.wound, sizeof(ds.wound), "%s", bone);
@@ -1392,39 +1459,20 @@ namespace
 					// la main du cote oppose a un bras touche ; sinon au hasard
 					ds.grabHand = strstr(bone, " L ") ? 1 : strstr(bone, " R ") ? 0 : (rand() & 1);
 				}
-				bool upright = !explosion && pellets == 1 && total < g_cfg.standMaxDamage * limit;
-				if (ds.dramatic)
+				if (g_cfg.balance && !explosion && total < g_cfg.balanceMaxDamage)
 				{
-					ds.stand = ds.stumble = true;
-					ds.standPart = g_cfg.hwStandTime;
-					ds.upTime = g_cfg.hwStandTime + g_cfg.hwStumbleTime;
-					deathPush *= g_cfg.standPushMult; // il encaisse la balle sans etre jete
-					deathCarry = deathCarry * 0.3f;
+					ds.balance = true;
+					float r = (float)rand() / RAND_MAX;
+					ds.upTime = g_cfg.balanceTimeMin + r * (g_cfg.balanceTimeMax - g_cfg.balanceTimeMin);
+					deathPush *= g_cfg.balancePushMult; // la balle le deseguilibre au lieu de le jeter : il titube
 				}
-				else if (g_cfg.stand && upright && !melee && !moving && Chance(g_cfg.standChance))
-				{
-					ds.stand = true;
-					ds.upTime = ds.standPart = g_cfg.standTime;
-					deathPush *= g_cfg.standPushMult; // la balle ne le jette pas : il reste debout puis s'effondre
-					deathCarry = {0, 0, 0};
-				}
-				else if (g_cfg.stumble && upright && Chance(hollywood ? g_cfg.hwStumbleChance : g_cfg.stumbleChance))
-				{
-					ds.stumble = true;
-					ds.upTime = g_cfg.stumbleTime;
-					ds.standPart = 0.f;
-					deathPush *= g_cfg.stumblePushMult; // il titube dans le sens du coup au lieu d'etre jete
-				}
-				ds.writhe = g_cfg.writhe && !explosion && (ds.dramatic || total < g_cfg.writheMaxDamage * limit)
-					&& Chance(hollywood ? g_cfg.hwWritheChance : g_cfg.writheChance);
+				ds.writhe = g_cfg.writhe && !explosion && total < g_cfg.writheMaxDamage && Chance(g_cfg.writheChance);
 			}
 		}
 		if (fatal)
 		{
-			reaction = ds.limp ? "meurt, s'effondre net" : ds.dramatic ? "mort Hollywood : debout, titube, tombe"
-				: ds.stand ? "meurt debout" : ds.stumble ? "meurt en titubant"
-				: elem == kElem_Fire ? "meurt en feu" : elem == kElem_Shock ? "meurt electrocute"
-				: explosion ? "meurt, projete" : "meurt";
+			reaction = ds.limp ? "meurt, s'effondre net" : ds.balance ? "agonie debout" : elem == kElem_Fire ? "meurt en feu"
+				: elem == kElem_Shock ? "meurt electrocute" : explosion ? "meurt, projete" : "meurt";
 		}
 		else if (standing && canKnock && charge >= knockAt)
 		{
@@ -1448,7 +1496,7 @@ namespace
 		int pushed = (living || fatal) ? PushBodyAndNeighbours(b, n, i, dir * (fatal ? deathPush : push), p) : 0;
 		bool deferred = false;
 		if (corpse)
-			reaction = "cadavre : poussee seulement";
+			reaction = agony ? "agonie : encaisse la balle" : "cadavre : poussee seulement";
 		else if (fatal && pushed)
 		{
 			// deja en ragdoll au moment du coup fatal : elan et muscles tout de suite
