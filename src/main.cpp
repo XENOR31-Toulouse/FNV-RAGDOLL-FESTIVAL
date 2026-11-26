@@ -19,8 +19,8 @@
 
 namespace
 {
-	constexpr UInt32 kPluginVersion = 6;            // pour xNVSE : entier qui augmente a chaque version publiee
-	constexpr const char* kVersionName = "0.6.0-alpha"; // pour les joueurs : version du paquet
+	constexpr UInt32 kPluginVersion = 7;            // pour xNVSE : entier qui augmente a chaque version publiee
+	constexpr const char* kVersionName = "0.7.0-alpha"; // pour les joueurs : version du paquet
 	constexpr const char* kPluginName = "NVReactiveRagdoll";
 
 	PluginHandle g_handle = 0xFFFFFFFF;
@@ -102,7 +102,7 @@ namespace
 		float balanceTimeMin = 1.5f;
 		float balanceTimeMax = 3.5f;
 		float balanceMaxDamage = 400.f;
-		float balanceSupport = 1.0f;
+		float balanceSupport = 0.35f; // petit coup de pouce : ce sont les muscles des jambes qui portent le corps
 		float balancePushMult = 0.6f;
 		float balanceDamping = 1.5f;
 		float uprightGain = 6.f;
@@ -115,6 +115,17 @@ namespace
 		float stepMaxDv = 5.f;
 		float balanceArms = 0.6f;
 		float hitVitalityLoss = 0.35f;
+		// [Balance] muscles d'articulation vers la pose debout photographiee a la mort
+		bool pose = true;
+		float poseStrength = 30.f;
+		float poseDamping = 6.f;
+		float poseMaxDv = 8.f;
+		float legStrength = 1.5f;
+		float spineStrength = 1.0f;
+		float armStrength = 0.3f;
+		float neckStrength = 0.6f;
+		float stepLegRelax = 0.3f;
+		float fallPose = 0.25f;
 		bool writhe = true;
 		float writheChance = 0.6f;
 		float writheTime = 3.f;
@@ -234,6 +245,16 @@ namespace
 		c.stepMaxDv = IniFloat("Balance", "fStepMaxSpeed", c.stepMaxDv);
 		c.balanceArms = IniFloat("Balance", "fArms", c.balanceArms);
 		c.hitVitalityLoss = IniFloat("Balance", "fHitWeaken", c.hitVitalityLoss);
+		c.pose = IniInt("Balance", "bJointMuscles", 1) != 0;
+		c.poseStrength = IniFloat("Balance", "fJointStrength", c.poseStrength);
+		c.poseDamping = IniFloat("Balance", "fJointDamping", c.poseDamping);
+		c.poseMaxDv = IniFloat("Balance", "fJointMaxSpeed", c.poseMaxDv);
+		c.legStrength = IniFloat("Balance", "fLegStrength", c.legStrength);
+		c.spineStrength = IniFloat("Balance", "fSpineStrength", c.spineStrength);
+		c.armStrength = IniFloat("Balance", "fArmStrength", c.armStrength);
+		c.neckStrength = IniFloat("Balance", "fNeckStrength", c.neckStrength);
+		c.stepLegRelax = IniFloat("Balance", "fStepLegRelax", c.stepLegRelax);
+		c.fallPose = IniFloat("Balance", "fFallPose", c.fallPose);
 		c.writhe = IniInt("Death", "bWrithe", 1) != 0;
 		c.writheChance = IniFloat("Death", "fWritheChance", c.writheChance);
 		c.writheTime = IniFloat("Death", "fWritheTime", c.writheTime);
@@ -608,6 +629,27 @@ namespace
 		return {Dot(Load3(rb, hk::kRotation), w), Dot(Load3(rb, hk::kRotation + 0x10), w), Dot(Load3(rb, hk::kRotation + 0x20), w)};
 	}
 
+	// Rotations des os : matrice 3x3 par colonnes (R * v = c0 v.x + c1 v.y + c2 v.z), comme hkMatrix3 de Havok
+	struct M3 { V3 c[3]; };
+	M3 RotOf(UInt8* rb) { return {{Load3(rb, hk::kRotation), Load3(rb, hk::kRotation + 0x10), Load3(rb, hk::kRotation + 0x20)}}; }
+	V3 MulV(const M3& a, V3 v) { return a.c[0] * v.x + a.c[1] * v.y + a.c[2] * v.z; }
+	M3 Mul(const M3& a, const M3& b) { return {{MulV(a, b.c[0]), MulV(a, b.c[1]), MulV(a, b.c[2])}}; }
+	M3 Tr(const M3& a)
+	{
+		return {{{a.c[0].x, a.c[1].x, a.c[2].x}, {a.c[0].y, a.c[1].y, a.c[2].y}, {a.c[0].z, a.c[1].z, a.c[2].z}}};
+	}
+	float El(const M3& a, int row, int col) { const V3& c = a.c[col]; return row == 0 ? c.x : row == 1 ? c.y : c.z; }
+	// rotation -> axe x angle (radians) ; 0 pour une rotation nulle (ou d'un demi-tour, rare ici)
+	V3 RotVec(const M3& r)
+	{
+		float cosA = (El(r, 0, 0) + El(r, 1, 1) + El(r, 2, 2) - 1.f) * 0.5f;
+		if (cosA > 1.f) cosA = 1.f;
+		if (cosA < -1.f) cosA = -1.f;
+		V3 v = {El(r, 2, 1) - El(r, 1, 2), El(r, 0, 2) - El(r, 2, 0), El(r, 1, 0) - El(r, 0, 1)}; // 2 sin(a) x axe
+		float s = Len(v);
+		return s < 1e-5f ? V3{0, 0, 0} : v * (acosf(cosA) / s);
+	}
+
 	// Gravite du monde physique ou se trouve le corps (unites Havok/s2)
 	V3 GravityOf(UInt8* rb)
 	{
@@ -637,12 +679,28 @@ namespace
 		int stepFoot;    // agonie : pied qui fait le pas en cours (0 gauche, 1 droit, -1 aucun)
 		DWORD stepEnd;   // fin du pas en cours
 		V3 stepTarget;   // ou le pied va se poser
+		// pose debout photographiee a la mort : rotation de chaque os par rapport a son parent, vers laquelle ses
+		// muscles d'articulation le ramenent (methode de Skyrim Delirium : la pose animee du PNJ est tenue)
+		bool hasPose;
+		int poseCount;
+		M3 pose[kMaxBodies];
 	};
 	constexpr int kMaxMuscles = 8;
 	SInt32 KnockedState(void* actorRef); // plus bas
 	MuscleTask g_muscles[kMaxMuscles] = {};
 
 	void ClearMuscles() { memset(g_muscles, 0, sizeof(g_muscles)); }
+
+	// Photographie la pose du corps (celle que l'animation lui donnait au moment ou le ragdoll de mort demarre)
+	void CapturePose(MuscleTask& m)
+	{
+		Body b[kMaxBodies];
+		int n = CollectBodies(m.ref, b);
+		for (int k = 0; k < n; ++k)
+			m.pose[k] = b[k].parent >= 0 ? Mul(Tr(RotOf(b[b[k].parent].rb)), RotOf(b[k].rb)) : RotOf(b[k].rb);
+		m.poseCount = n;
+		m.hasPose = n > 1;
+	}
 
 	void StartMuscles(void* target, bool dying, V3 fallDir, const DeathStyle* death)
 	{
@@ -675,6 +733,8 @@ namespace
 		if (ds.explosion && g_cfg.flyTime + 0.5f > duration) duration = g_cfg.flyTime + 0.5f;
 		*slot = {RefID(target), target, GetTickCount(), GetTickCount(), duration, dying, Norm(fallDir), 0.f, ds};
 		slot->stepFoot = -1;
+		slot->hasPose = false;
+		if (dying && ds.balance) CapturePose(*slot);
 		if (g_cfg.verbose)
 			Log("Muscles de %08X : debut (%s%s%s%s%s%s%s%s), %.1f s", slot->refID, dying ? "mort" : "chute",
 				ds.balance ? ", agonie debout" : "", ds.writhe ? ", se tord au sol" : "",
@@ -857,10 +917,12 @@ namespace
 		//      qui le pousse, ou l'elan de sa course, le font donc tituber de lui-meme, dans le bon sens ;
 		//    - ses bras s'ecartent pour garder l'equilibre (sauf la main sur la plaie).
 		bool upright = age < standT;
+		float vital = 0.f; // forces qui restent pendant l'agonie : 1 pendant 70 % du temps, puis jusqu'a 0
 		if (upright)
 		{
 			float hold = standT * 0.7f;
-			float support = g_cfg.balanceSupport * (age < hold ? 1.f : 1.f - (age - hold) / (standT - hold));
+			vital = age < hold ? 1.f : 1.f - (age - hold) / (standT - hold);
+			float support = g_cfg.balanceSupport * vital;
 			V3 g = GravityOf(b[chest].rb);
 			int ends[16];
 			int ne = humanoid ? 0 : LimbEnds(b, n, chest, ends, 16);
@@ -898,16 +960,14 @@ namespace
 				float s = Len(axis);
 				if (s > 1e-4f)
 				{
+					// le tronc entier (bassin et poitrine ensemble) est ramene vers la verticale voulue : c'est son
+					// equilibre ; les jambes, tenues par leurs muscles dans la pose, suivent le bassin
 					V3 wWant = axis * (asinf(s > 1.f ? 1.f : s) * g_cfg.uprightGain / s);
-					V3 wRel = Load3(b[chest].rb, hk::kAngVelocity) - Load3(b[pelvis].rb, hk::kAngVelocity);
+					V3 wNow = (Load3(b[chest].rb, hk::kAngVelocity) + Load3(b[pelvis].rb, hk::kAngVelocity)) * 0.5f;
 					float k = dt * 10.f > 1.f ? 1.f : dt * 10.f;
-					V3 dw = (wWant - wRel) * (k * support);
-					float ic = InvInertia(b[chest].rb), ip = InvInertia(b[pelvis].rb);
-					if (ic > 0.f)
-					{
-						AddAngVel(b[chest].rb, dw);
-						AddAngVel(b[pelvis].rb, dw * (-ip / ic));
-					}
+					V3 dw = (wWant - wNow) * (k * vital);
+					AddAngVel(b[chest].rb, dw);
+					AddAngVel(b[pelvis].rb, dw);
 				}
 
 				// il ne glisse pas comme sur de la glace : sa vitesse horizontale s'use (ses pieds freinent)
@@ -950,7 +1010,7 @@ namespace
 						if (phase > 1.f) phase = 1.f;
 						V3 target = m.stepTarget;
 						target.z += g_cfg.stepLift * sinf(3.14159f * phase); // le pied se leve puis se pose
-						PullBody(b, k, pelvis, target, g_cfg.stepPull, g_cfg.stepDamping, g_cfg.stepMaxDv, support, dt);
+						PullBody(b, k, pelvis, target, g_cfg.stepPull, g_cfg.stepDamping, g_cfg.stepMaxDv, vital, dt);
 						touched[k] = true;
 					}
 				}
@@ -988,7 +1048,15 @@ namespace
 			}
 		}
 
-		// 1. tension des articulations
+		// 1. muscles des articulations.
+		//    Agonie (pose photographiee) : chaque articulation est un muscle qui ramene l'os vers sa rotation de la
+		//    pose debout par rapport a son parent (ressort amorti : force fPoseStrength, amortissement fPoseDamping).
+		//    Les jambes sont plus fortes (elles portent le corps) et faiblissent avec les forces (vital) : a la fin
+		//    de l'agonie les genoux plient et il s'affaisse. La jambe qui fait un pas est relachee. Pendant la chute,
+		//    une petite part de la pose reste (fFallPose). Sinon : simple raideur (la rotation relative est freinee).
+		//    L'effort est partage entre les deux os selon leur inertie : rien ne tourne « tout seul ».
+		bool posing = m.hasPose && m.poseCount == n && !writhing && !flying && elem == kElem_None && g_cfg.pose;
+		float poseScale = upright ? 0.25f + 0.75f * vital : (m.dying ? g_cfg.fallPose * strength : 0.f);
 		for (int k = 0; k < n; ++k)
 		{
 			int p = b[k].parent;
@@ -996,17 +1064,37 @@ namespace
 			UInt8* ck = b[k].rb;
 			UInt8* cp = b[p].rb;
 			if (!hk::IsDynamic(At<UInt8>(ck, hk::kMotionType)) || !hk::IsDynamic(At<UInt8>(cp, hk::kMotionType))) continue;
-			float damp = g_cfg.jointDamping;
-			if (b[k].name && (strstr(b[k].name, "Head") || strstr(b[k].name, "Neck")))
-				damp = (m.death.headWound && upright) ? 0.03f : g_cfg.neckDamping; // touche a la tete : elle ballotte
-			if (elem == kElem_Shock) damp *= 2.f; // muscles contractes par le courant
-			damp *= strength;
-			if (damp > 0.9f) damp = 0.9f;
-			damp = 1.f - powf(1.f - damp, dt * 60.f); // reglage donne pour 60 images/s, meme effet a tout framerate
 			float ik = InvInertia(ck), ip = InvInertia(cp);
 			if (ik + ip <= 0.f) continue;
+			const char* nm = b[k].name ? b[k].name : "";
+			bool headPart = strstr(nm, "Head") || strstr(nm, "Neck");
 			V3 wrel = Load3(ck, hk::kAngVelocity) - Load3(cp, hk::kAngVelocity);
-			V3 T = wrel * (-damp / (ik + ip)); // impulsion angulaire qui retire damp de la rotation relative
+			V3 dw;
+			if (posing && poseScale > 0.f)
+			{
+				bool leg = strstr(nm, "Thigh") || strstr(nm, "Calf") || strstr(nm, "Foot");
+				bool arm = strstr(nm, "Clavicle") || strstr(nm, "Arm") || strstr(nm, "Hand");
+				float mul = leg ? g_cfg.legStrength : arm ? g_cfg.armStrength : headPart ? g_cfg.neckStrength : g_cfg.spineStrength;
+				if (headPart && m.death.headWound && upright) mul *= 0.1f;    // touche a la tete : elle ballotte
+				if (leg && upright) mul *= vital;                             // les jambes lachent en premier
+				if (leg && upright && m.stepFoot >= 0 && strstr(nm, m.stepFoot ? " R " : " L "))
+					mul *= g_cfg.stepLegRelax;                                // la jambe qui fait le pas se laisse porter
+				M3 want = Mul(RotOf(cp), m.pose[k]);                           // ou l'os devrait etre (monde)
+				V3 e = RotVec(Mul(want, Tr(RotOf(ck))));                       // rotation qui l'y amene
+				dw = (e * (g_cfg.poseStrength * mul * poseScale) - wrel * (g_cfg.poseDamping * poseScale)) * dt;
+				float l = Len(dw);
+				if (l > g_cfg.poseMaxDv) dw = dw * (g_cfg.poseMaxDv / l);
+			}
+			else
+			{
+				float damp = headPart ? ((m.death.headWound && upright) ? 0.03f : g_cfg.neckDamping) : g_cfg.jointDamping;
+				if (elem == kElem_Shock) damp *= 2.f; // muscles contractes par le courant
+				damp *= strength;
+				if (damp > 0.9f) damp = 0.9f;
+				damp = 1.f - powf(1.f - damp, dt * 60.f); // reglage donne pour 60 images/s, meme effet a tout framerate
+				dw = wrel * -damp;
+			}
+			V3 T = dw * (1.f / (ik + ip)); // impulsion angulaire qui change la rotation relative de dw
 			AddAngVel(ck, T * ik);
 			AddAngVel(cp, T * -ip);
 			touched[k] = touched[p] = true;
